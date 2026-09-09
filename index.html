@@ -681,6 +681,15 @@ function renderAnalysis(){
   const changes = ESTADO_CHANGES.filter(c=>byCode.has(c.c));
   document.getElementById('chgcnt-global').textContent = '('+changes.length+')';
   const body = document.getElementById('chgbody-global');
+  document.querySelector('.changes-empty')?.remove();
+  const changesTableEl = document.querySelector('.changes-section .changes-table');
+  if(!changes.length){
+    changesTableEl.hidden = true;
+    document.querySelector('.changes-scroll').insertAdjacentHTML('beforeend',
+      '<div class="changes-empty">Ninguna solicitud cambió de estado en la última revisión.</div>');
+    return;
+  }
+  changesTableEl.hidden = false;
   body.innerHTML = changes.map(c=>
     '<tr data-code="'+c.c+'">'+
       '<td class="code">#'+c.c+'</td>'+
