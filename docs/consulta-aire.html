@@ -1,0 +1,977 @@
+<title>Consulta air-e</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+:root{
+  --ink:#131c22;
+  --paper:#eef2f3;
+  --surface:#ffffff;
+  --surface-2:#e4eaec;
+  --rule:#c6d2d7;
+  --rule-soft:#dbe4e7;
+  --muted:#586a72;
+  --accent:#14556e;
+  --accent-soft:#e0edf2;
+  --ok:#1d6a4c;
+  --ok-soft:#dfeee7;
+  --warn:#8a5510;
+  --warn-soft:#f6eadb;
+  --stop:#97331e;
+  --stop-soft:#f7e6e1;
+  --shadow:0 1px 2px rgba(19,28,34,.06),0 8px 24px -16px rgba(19,28,34,.28);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ink:#e5ecef;
+    --paper:#0d1417;
+    --surface:#151e22;
+    --surface-2:#1d282d;
+    --rule:#2b3a41;
+    --rule-soft:#222e34;
+    --muted:#93a5ad;
+    --accent:#63c1de;
+    --accent-soft:#122b35;
+    --ok:#57b78d;
+    --ok-soft:#12261e;
+    --warn:#d69b4a;
+    --warn-soft:#2a2114;
+    --stop:#e28466;
+    --stop-soft:#2c1811;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -16px rgba(0,0,0,.7);
+  }
+}
+:root[data-theme="dark"]{
+  --ink:#e5ecef;
+  --paper:#0d1417;
+  --surface:#151e22;
+  --surface-2:#1d282d;
+  --rule:#2b3a41;
+  --rule-soft:#222e34;
+  --muted:#93a5ad;
+  --accent:#63c1de;
+  --accent-soft:#122b35;
+  --ok:#57b78d;
+  --ok-soft:#12261e;
+  --warn:#d69b4a;
+  --warn-soft:#2a2114;
+  --stop:#e28466;
+  --stop-soft:#2c1811;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -16px rgba(0,0,0,.7);
+}
+
+*{box-sizing:border-box}
+
+body{
+  background:var(--paper);
+  color:var(--ink);
+  font-family:"Source Serif 4",Georgia,"Times New Roman",serif;
+  font-size:1.0625rem;
+  line-height:1.62;
+  -webkit-font-smoothing:antialiased;
+  padding-inline:20px;
+  padding-block:0;
+}
+
+.shell{
+  max-width:1140px;
+  margin-inline:auto;
+  display:grid;
+  grid-template-columns:1fr;
+  gap:0;
+}
+
+/* ---------- masthead ---------- */
+
+.masthead{
+  padding-block:56px 34px;
+  border-bottom:2px solid var(--ink);
+}
+.eyebrow{
+  font-family:"Archivo",system-ui,sans-serif;
+  font-size:.70rem;
+  font-weight:600;
+  letter-spacing:.13em;
+  text-transform:uppercase;
+  color:var(--accent);
+  margin:0 0 14px;
+}
+h1{
+  font-family:"Archivo",system-ui,sans-serif;
+  font-weight:700;
+  font-size:clamp(2.1rem,5.4vw,3.35rem);
+  line-height:1.04;
+  letter-spacing:-.022em;
+  text-wrap:balance;
+  margin:0 0 16px;
+}
+.standfirst{
+  font-size:1.15rem;
+  color:var(--muted);
+  max-width:62ch;
+  margin:0 0 26px;
+}
+.standfirst strong{color:var(--ink);font-weight:600}
+
+.stamps{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px 10px;
+  align-items:center;
+}
+.stamp{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:.72rem;
+  letter-spacing:.02em;
+  padding:5px 9px;
+  border:1px solid var(--rule);
+  border-radius:3px;
+  color:var(--muted);
+  background:var(--surface);
+  white-space:nowrap;
+}
+.stamp b{color:var(--ink);font-weight:500}
+.stamp--live{
+  border-color:var(--ok);
+  color:var(--ok);
+  background:var(--ok-soft);
+}
+
+/* ---------- layout with rail ---------- */
+
+.body-grid{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:0;
+}
+@media (min-width:1000px){
+  .body-grid{
+    grid-template-columns:196px minmax(0,1fr);
+    gap:52px;
+    align-items:start;
+  }
+  .rail{
+    position:sticky;
+    top:28px;
+    padding-block:44px;
+  }
+}
+.rail{padding-block:30px 0}
+.rail-title{
+  font-family:"Archivo",system-ui,sans-serif;
+  font-size:.68rem;
+  font-weight:600;
+  letter-spacing:.13em;
+  text-transform:uppercase;
+  color:var(--muted);
+  margin:0 0 12px;
+}
+.rail ol{
+  list-style:none;
+  margin:0;
+  padding:0;
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  counter-reset:nav;
+}
+.rail a{
+  display:block;
+  font-family:"Archivo",system-ui,sans-serif;
+  font-size:.83rem;
+  line-height:1.35;
+  color:var(--muted);
+  text-decoration:none;
+  padding:5px 8px 5px 0;
+  border-left:2px solid transparent;
+  padding-left:10px;
+  transition:color .12s,border-color .12s;
+}
+.rail a:hover,.rail a:focus-visible{
+  color:var(--accent);
+  border-left-color:var(--accent);
+}
+@media (max-width:999px){
+  .rail{border-bottom:1px solid var(--rule-soft)}
+  .rail ol{flex-direction:row;flex-wrap:wrap;gap:2px 4px}
+  .rail a{border-left:none;padding-left:0;padding-inline:8px;border:1px solid var(--rule-soft);border-radius:3px}
+  .rail a:hover,.rail a:focus-visible{border-color:var(--accent)}
+}
+
+main{padding-block:44px 0;min-width:0}
+
+/* ---------- sections ---------- */
+
+section{
+  padding-block:0 46px;
+  scroll-margin-top:24px;
+}
+h2{
+  font-family:"Archivo",system-ui,sans-serif;
+  font-weight:600;
+  font-size:1.62rem;
+  line-height:1.14;
+  letter-spacing:-.014em;
+  text-wrap:balance;
+  margin:0 0 6px;
+  padding-block:34px 0;
+}
+section:first-of-type h2{padding-block:0}
+h2 + .kicker{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:.72rem;
+  color:var(--muted);
+  margin:0 0 18px;
+  letter-spacing:.01em;
+}
+h3{
+  font-family:"Archivo",system-ui,sans-serif;
+  font-weight:600;
+  font-size:1.06rem;
+  letter-spacing:-.005em;
+  margin:30px 0 8px;
+}
+p{margin:0 0 15px;max-width:66ch}
+ul,ol{margin:0 0 15px;padding-left:1.15em;max-width:66ch}
+li{margin-bottom:7px}
+li::marker{color:var(--muted)}
+a{color:var(--accent)}
+strong{font-weight:600}
+code{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:.855em;
+  background:var(--surface-2);
+  padding:1px 5px;
+  border-radius:3px;
+  overflow-wrap:break-word;
+}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* ---------- decision block ---------- */
+
+.decisions{
+  background:var(--surface);
+  border:1px solid var(--rule);
+  border-top:3px solid var(--warn);
+  border-radius:4px;
+  padding:26px 24px 22px;
+  box-shadow:var(--shadow);
+  margin-block:0 8px;
+}
+.decisions > .eyebrow{color:var(--warn);margin-bottom:10px}
+.decisions h2{padding-block:0;font-size:1.34rem;margin-bottom:14px}
+.decision-list{
+  list-style:none;
+  margin:0;
+  padding:0;
+  display:flex;
+  flex-direction:column;
+  gap:18px;
+  max-width:none;
+}
+.decision-list > li{
+  margin:0;
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr);
+  gap:14px;
+  align-items:start;
+}
+.dnum{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:.78rem;
+  font-weight:600;
+  color:var(--warn);
+  background:var(--warn-soft);
+  border-radius:3px;
+  padding:3px 8px;
+  line-height:1.5;
+}
+.decision-list h3{margin:0 0 4px;font-size:1rem}
+.decision-list p{margin:0;font-size:.98rem;color:var(--muted);max-width:60ch}
+.decision-list p strong{color:var(--ink)}
+
+/* ---------- tables ---------- */
+
+.tw{
+  overflow-x:auto;
+  border:1px solid var(--rule-soft);
+  border-radius:4px;
+  background:var(--surface);
+  margin-block:18px 20px;
+}
+table{
+  border-collapse:collapse;
+  width:100%;
+  font-size:.9rem;
+  font-variant-numeric:tabular-nums;
+}
+caption{
+  caption-side:top;
+  text-align:left;
+  font-family:"Archivo",system-ui,sans-serif;
+  font-size:.72rem;
+  font-weight:600;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+  color:var(--muted);
+  padding:12px 14px 8px;
+}
+th,td{
+  text-align:left;
+  padding:9px 14px;
+  border-bottom:1px solid var(--rule-soft);
+  vertical-align:top;
+}
+thead th{
+  font-family:"Archivo",system-ui,sans-serif;
+  font-size:.72rem;
+  font-weight:600;
+  letter-spacing:.07em;
+  text-transform:uppercase;
+  color:var(--muted);
+  border-bottom:1px solid var(--rule);
+  white-space:nowrap;
+}
+tbody tr:last-child td{border-bottom:none}
+td.num{text-align:right;font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.84rem;white-space:nowrap}
+th.num{text-align:right}
+td.mono,th.mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.82rem}
+.t-new td{background:var(--accent-soft)}
+
+/* ---------- code / pre ---------- */
+
+pre{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:.815rem;
+  line-height:1.62;
+  background:var(--surface);
+  border:1px solid var(--rule-soft);
+  border-left:3px solid var(--accent);
+  border-radius:4px;
+  padding:15px 17px;
+  overflow-x:auto;
+  margin-block:16px 20px;
+  color:var(--ink);
+}
+pre code{background:none;padding:0;font-size:1em}
+figure{margin:0}
+figcaption{
+  font-size:.86rem;
+  color:var(--muted);
+  margin-top:-8px;
+  margin-bottom:20px;
+  max-width:66ch;
+}
+
+/* ---------- guard cards ---------- */
+
+.guards{
+  list-style:none;
+  margin:18px 0 20px;
+  padding:0;
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(230px,1fr));
+  gap:14px;
+  max-width:none;
+}
+.guards > li{
+  margin:0;
+  background:var(--surface);
+  border:1px solid var(--rule-soft);
+  border-radius:4px;
+  padding:15px 16px 14px;
+  display:flex;
+  flex-direction:column;
+  gap:7px;
+}
+.guards h3{
+  margin:0;
+  font-size:.95rem;
+}
+.guards p{margin:0;font-size:.9rem;color:var(--muted);max-width:none}
+.abort{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:.7rem;
+  letter-spacing:.05em;
+  text-transform:uppercase;
+  color:var(--stop);
+  background:var(--stop-soft);
+  border-radius:3px;
+  padding:3px 7px;
+  align-self:flex-start;
+  margin-top:auto;
+}
+
+/* ---------- chips ---------- */
+
+.chip{
+  display:inline-block;
+  font-family:"Archivo",system-ui,sans-serif;
+  font-size:.68rem;
+  font-weight:600;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  padding:3px 7px;
+  border-radius:3px;
+  white-space:nowrap;
+}
+.chip--ok{color:var(--ok);background:var(--ok-soft)}
+.chip--stop{color:var(--stop);background:var(--stop-soft)}
+.chip--warn{color:var(--warn);background:var(--warn-soft)}
+
+/* ---------- callout ---------- */
+
+.note{
+  border-left:3px solid var(--accent);
+  background:var(--surface);
+  border-radius:0 4px 4px 0;
+  padding:15px 18px;
+  margin-block:18px 22px;
+}
+.note p:last-child{margin-bottom:0}
+.note .eyebrow{margin-bottom:7px}
+.note--stop{border-left-color:var(--stop)}
+.note--stop .eyebrow{color:var(--stop)}
+
+/* ---------- scope list ---------- */
+
+.scope{
+  list-style:none;
+  margin:18px 0 20px;
+  padding:0;
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+  max-width:none;
+}
+.scope > li{
+  margin:0;
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr);
+  gap:13px;
+  align-items:baseline;
+  padding-bottom:14px;
+  border-bottom:1px solid var(--rule-soft);
+}
+.scope > li:last-child{border-bottom:none;padding-bottom:0}
+.scope p{margin:0;max-width:62ch}
+.scope .lead{font-weight:600}
+
+footer{
+  border-top:2px solid var(--ink);
+  padding-block:24px 60px;
+  font-size:.88rem;
+  color:var(--muted);
+}
+footer p{max-width:66ch}
+
+@media (prefers-reduced-motion:reduce){
+  *{transition:none!important;animation:none!important}
+}
+</style>
+
+<div class="shell">
+
+  <header class="masthead">
+    <p class="eyebrow">Radar Solar · Documento de diseño</p>
+    <h1>Consulta air-e</h1>
+    <p class="standfirst">
+      Refrescar los <strong>1.586 registros</strong> del radar contra el portal CREG030 de air-e,
+      la única fuente veraz, y agregar los dos campos de <strong>almacenamiento de energía</strong>
+      que hoy no existen en la base.
+    </p>
+    <div class="stamps">
+      <span class="stamp"><b>2026-09-10</b></span>
+      <span class="stamp">rama <b>consulta-aire-almacenamiento</b></span>
+      <span class="stamp">commit <b>ed8f130</b></span>
+      <span class="stamp stamp--live">Aprobado · pendiente de plan</span>
+    </div>
+  </header>
+
+  <div class="body-grid">
+
+    <nav class="rail" aria-label="Secciones">
+      <p class="rail-title">Contenido</p>
+      <ol>
+        <li><a href="#decisiones">Pendiente de tu decisión</a></li>
+        <li><a href="#fuente">Fuente de datos</a></li>
+        <li><a href="#mapeo">Mapeo de campos</a></li>
+        <li><a href="#sheet">El sheet</a></li>
+        <li><a href="#alcance">Alcance</a></li>
+        <li><a href="#arquitectura">Arquitectura</a></li>
+        <li><a href="#fusion">Reglas de fusión</a></li>
+        <li><a href="#guardas">Guardas</a></li>
+        <li><a href="#ui">Interfaz</a></li>
+        <li><a href="#pruebas">Pruebas</a></li>
+        <li><a href="#entregables">Entregables</a></li>
+        <li><a href="#fuera">Fuera de alcance</a></li>
+      </ol>
+    </nav>
+
+    <main>
+
+      <section id="decisiones">
+        <div class="decisions">
+          <p class="eyebrow">Necesito tu criterio</p>
+          <h2>Dos puntos donde tu decisión puede diferir de la mía</h2>
+          <ol class="decision-list">
+            <li>
+              <span class="dnum">01</span>
+              <div>
+                <h3>Los 5 códigos huérfanos del sheet</h3>
+                <p>Los dejo fuera del mapa, porque air-e no los conoce. Si preferís que
+                <code>20707</code> y <code>20715</code> entren con los datos del sheet, se puede — pero
+                contradice el principio de fiarse de air-e, y <strong>quedarían sin coordenadas, o sea
+                invisibles en el mapa</strong>.</p>
+              </div>
+            </li>
+            <li>
+              <span class="dnum">02</span>
+              <div>
+                <h3>El umbral del 25% de deriva de estados</h3>
+                <p>Es una guarda que puse a ojo para detectar un pull defectuoso. <strong>Si sabés que
+                air-e mueve estados en lotes grandes, hay que subirlo</strong> o la corrida va a abortar
+                sin motivo real.</p>
+              </div>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <section id="fuente">
+        <h2>Fuente de datos</h2>
+        <p class="kicker">servicios.air-e.com/CREG030</p>
+        <p>
+          El portal expone un endpoint público, sin autenticación, que devuelve todos los registros
+          de un rango de fechas en JSON con las descripciones ya resueltas. Esto evita parsear PDFs
+          por completo.
+        </p>
+        <figure>
+<pre><code>POST /CREG030/form/WFListadoSolicitud.aspx/ListaSolicitudes
+Content-Type: application/json; charset=utf-8
+
+{"Objsolicitud": {"FECHAINI": "2024-10-01", "FECHAFIN": "2024-10-31"}}</code></pre>
+          <figcaption>
+            Devuelve 177 registros para octubre de 2024 (488&nbsp;KB). El filtro opera sobre
+            <code>FEC_CREA</code>, la fecha de solicitud. La respuesta llega en Latin-1 y hay que
+            recodificarla a UTF-8.
+          </figcaption>
+        </figure>
+
+        <h3>La vía código por código, descartada</h3>
+        <p>
+          Existe una segunda ruta: <code>Encryptar</code> → <code>WFSolicitud.aspx?enc=…</code> →
+          <code>CargarDatosSolicitud</code>. Se descarta por dos razones. Cuesta 3 peticiones por
+          código en vez de 1 por mes. Y es insegura:
+        </p>
+        <div class="note note--stop">
+          <p class="eyebrow">Modo de falla verificado</p>
+          <p>
+            Si la carga de la página <code>?enc=</code> falla, <code>CargarDatosSolicitud</code>
+            devuelve <strong>otra solicitud sin señalar el error</strong>. En pruebas, al pedir la
+            <code>21941</code> devolvió la <code>25657</code>. Es con toda probabilidad el origen del
+            commit <code>a2cabc2 Revert spurious estado changes caused by an unreliable air-e
+            session</code>.
+          </p>
+        </div>
+        <p>
+          El endpoint masivo no tiene ese problema, porque cada registro trae su propio
+          <code>CONSECUTIVO</code>. Baja el costo de la corrida de unas 816 peticiones a unas 91.
+        </p>
+      </section>
+
+      <section id="mapeo">
+        <h2>Mapeo de campos</h2>
+        <p class="kicker">air-e → const DATA</p>
+        <div class="tw">
+          <table>
+            <caption>Campos que se toman de air-e</caption>
+            <thead>
+              <tr><th class="mono">Campo air-e</th><th class="mono">BD</th><th>Notas</th></tr>
+            </thead>
+            <tbody>
+              <tr><td class="mono">CONSECUTIVO</td><td class="mono">c</td><td>Llave. El <code>external_code</code> del sheet. Se guarda como string, igual que hoy.</td></tr>
+              <tr><td class="mono">FEC_CREA</td><td class="mono">f</td><td>Llega como <code>/Date(&lt;ms epoch&gt;)/</code>. Se convierte a <strong>UTC-5</strong> y se formatea <code>YYYY-MM-DD HH:mm</code>.</td></tr>
+              <tr><td class="mono">DESC_ESTADO</td><td class="mono">es</td><td>Nombre ya resuelto, no el código numérico.</td></tr>
+              <tr><td class="mono">NOMBRE_CLI</td><td class="mono">cl</td><td>Nombre del cliente.</td></tr>
+              <tr><td class="mono">DESC_CIUDAD_PRO</td><td class="mono">ci</td><td>Ciudad del inmueble, no la del cliente.</td></tr>
+              <tr><td class="mono">DESC_CORREGIMIENTO_PRO</td><td class="mono">co</td><td>Corregimiento.</td></tr>
+              <tr><td class="mono">DESC_VEREDA_PRO</td><td class="mono">ve</td><td>Vereda.</td></tr>
+              <tr><td class="mono">TECNO_UTILIZADA_DESC</td><td class="mono">t</td><td>Tipo de tecnología.</td></tr>
+              <tr><td class="mono">TIPO</td><td class="mono">tg</td><td>Tipo de generación.</td></tr>
+              <tr><td class="mono">LATITUD</td><td class="mono">la</td><td>Ubicación georreferenciada WGS84. <strong>Redondear a 5 decimales.</strong></td></tr>
+              <tr><td class="mono">LONGITUD</td><td class="mono">lo</td><td>Igual.</td></tr>
+              <tr class="t-new"><td class="mono">TIENE_ALMACENAMIENTO</td><td class="mono">al</td><td><span class="chip chip--ok">Nuevo</span> <code>1 → true</code>, <code>2 → false</code>, otro → <code>null</code>.</td></tr>
+              <tr class="t-new"><td class="mono">CAPACIDAD_ALMACENAMIENTO</td><td class="mono">ak</td><td><span class="chip chip--ok">Nuevo</span> Capacidad en kWh.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          La codificación <code>1=Sí / 2=No</code> se verificó contra <code>ejemplo.pdf</code>: para
+          la solicitud <code>21941</code> el PDF dice «No» y la API devuelve <code>2</code>.
+        </p>
+
+        <h3>Dos precisiones que evitan un diff inútil</h3>
+        <p>
+          <strong>Coordenadas.</strong> air-e devuelve ruido de punto flotante: para la solicitud
+          <code>23433</code> devuelve <code>-74.156100000000009</code>, mientras la BD tiene
+          <code>-74.1561</code>. Sin redondear a 5 decimales, el refresco cambiaría casi los 1.586
+          registros y enterraría los cambios reales. Cinco decimales son cerca de un metro de
+          precisión, más que suficiente para el mapa, y coinciden con lo que la BD ya guarda.
+        </p>
+        <p>
+          <strong>Fecha.</strong> <code>FEC_CREA</code> es un epoch en milisegundos. Hay que
+          convertirlo a UTC-5 para que dé <code>2024-10-30 14:32</code>, tal como aparece en el PDF.
+        </p>
+
+        <h3>Campos que no vienen de air-e</h3>
+        <p>
+          Se preservan intactos: <code>e</code> (empresa), <code>se</code> (estado sheet),
+          <code>p</code> (nombre de proyecto), <code>un</code> (bandera Unergy) y <code>b</code>
+          (batch de ingreso).
+        </p>
+        <div class="note">
+          <p class="eyebrow">Por qué empresa y estado sheet no se recalculan</p>
+          <p>
+            Están poblados en los 1.586 registros, pero el sheet solo cubre 275 códigos. La BD
+            contiene empresas que no existen en ese sheet: <code>OTACC</code> con 469 registros,
+            <code>ISRAEL TORRES</code> con 76, <code>URSAE</code> con 48, <code>BEEDEV</code> con 28.
+            <strong>Derivarlos del sheet borraría la empresa de 1.316 registros.</strong>
+          </p>
+          <p>
+            Para los 270 códigos que sí están en ambos lados, <code>se</code> y <code>e</code>
+            coinciden al 100% con el sheet, así que no hay nada que reconciliar.
+          </p>
+        </div>
+      </section>
+
+      <section id="sheet">
+        <h2>El sheet: estructura real</h2>
+        <p class="kicker">Solicitudes ECS de A-ire</p>
+        <p>
+          El sheet tiene <strong>dos tablas, no una</strong>. Mis primeros conteos las mezclaban
+          porque llegaron concatenadas.
+        </p>
+        <div class="tw">
+          <table>
+            <caption>Las dos tablas del sheet</caption>
+            <thead>
+              <tr><th>Tabla</th><th class="num">Filas</th><th>Columnas</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>1</td><td class="num">275</td>
+                <td class="mono">id, external_code, estado, empresa, project_name, customer_name, type_supply, initial_date, end_date</td>
+              </tr>
+              <tr>
+                <td>2</td><td class="num">225</td>
+                <td>Las mismas, <strong>más <code>latitud</code> y <code>longitud</code></strong></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          La tabla 2 es un subconjunto de los códigos de la tabla 1. Unión: <strong>275 códigos
+          únicos</strong>, sin repeticiones dentro de cada tabla. Los 225 que aparecen en ambas
+          coinciden al 100% en <code>estado</code>, <code>empresa</code> y <code>project_name</code>
+          — cero conflictos, así que consolidar por <code>external_code</code> es seguro.
+        </p>
+        <p>
+          Las columnas <code>latitud</code>/<code>longitud</code> de la tabla 2
+          <strong>se ignoran deliberadamente</strong>: las coordenadas vienen de air-e, que es la
+          fuente veraz. De los 275 códigos, 272 son numéricos y 3 no lo son.
+        </p>
+
+        <h3>Los 5 códigos del sheet que no están en la BD</h3>
+        <div class="tw">
+          <table>
+            <caption>Ninguno se agrega — todos van al reporte</caption>
+            <thead>
+              <tr><th class="mono">Código</th><th>Situación</th><th>Veredicto</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="mono">C139<br>C153<br>C159</td>
+                <td>
+                  No son números de solicitud, así que no se pueden consultar en air-e. Tienen
+                  <code>project_name</code> con la convención interna de Unergy
+                  (<code>COLATLT6P1_LURUACO_SUR</code>) y <code>customer_name</code> con el valor
+                  <code>nan</code>, artefacto de un export de pandas. Parecen marcadores internos de
+                  proyectos sin número de solicitud asignado.
+                </td>
+                <td><span class="chip chip--stop">No consultable</span></td>
+              </tr>
+              <tr>
+                <td class="mono">20707<br>20715</td>
+                <td>
+                  <strong>No existen en air-e.</strong> Verificado por dos vías independientes:
+                  <code>ValidaSolicitud</code> devuelve <code>false</code>, igual que un código
+                  inventado como <code>99999</code>, mientras que <code>21941</code> devuelve
+                  <code>true</code>; y un barrido de los 12 meses de 2024 no los encuentra.
+                </td>
+                <td><span class="chip chip--stop">No existe</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          Esto es coherente con el criterio de fiarse de air-e por encima del sheet: si air-e no
+          conoce un código, no tenemos datos veraces que poner. El barrido de 2024 dejó ver además
+          que la secuencia de <code>CONSECUTIVO</code> no es densa — mayo de 2024 salta de
+          <code>18432</code> a <code>21000</code> — así que la ausencia de <code>20707</code> y
+          <code>20715</code> no es un hueco anómalo del listado, sino un rango que simplemente no
+          existe.
+        </p>
+      </section>
+
+      <section id="alcance">
+        <h2>Alcance</h2>
+        <p class="kicker">Tres decisiones tomadas</p>
+        <ul class="scope">
+          <li>
+            <span class="chip chip--ok">Sí</span>
+            <div>
+              <p class="lead">Refrescar los 1.586 registros existentes</p>
+              <p>Con datos oficiales de air-e, no solo los 275 del sheet. El endpoint masivo hace que cueste lo mismo.</p>
+            </div>
+          </li>
+          <li>
+            <span class="chip chip--stop">No</span>
+            <div>
+              <p class="lead">Incorporar registros nuevos de air-e</p>
+              <p>Los 5 códigos del sheet que faltan en la BD no son incorporables, así que el total se mantiene en <strong>1.586</strong>.</p>
+            </div>
+          </li>
+          <li>
+            <span class="chip chip--ok">Sí</span>
+            <div>
+              <p class="lead">Agregar almacenamiento a todos los registros</p>
+              <p>Los campos <code>al</code> y <code>ak</code>, con respuesta y capacidad en kWh.</p>
+            </div>
+          </li>
+        </ul>
+        <p>
+          La segunda decisión se tomó asumiendo que se agregarían <code>20707</code> y
+          <code>20715</code>. Al verificarlos contra air-e resultó que no existen, así que el total
+          previsto pasó de 1.588 a 1.586. Es un cambio a la baja y sin pérdida de información: los 5
+          códigos quedan documentados en el reporte.
+        </p>
+
+        <h3>Sobre los registros de air-e que faltan en la BD</h3>
+        <p>
+          Los 1.586 son un subconjunto curado de air-e. Todos existen en air-e — cero huérfanos en
+          las muestras — pero air-e tiene bastante más:
+        </p>
+        <div class="tw">
+          <table>
+            <caption>Cobertura de la BD frente a air-e</caption>
+            <thead>
+              <tr><th>Mes</th><th class="num">air-e</th><th class="num">BD</th><th class="num">No están en la BD</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>oct-2024</td><td class="num">177</td><td class="num">19</td><td class="num">158</td></tr>
+              <tr><td>jun-2025</td><td class="num">269</td><td class="num">73</td><td class="num">196</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          La regla original de inclusión no es deducible: no es por tipo, ni por estado, ni por
+          potencia. En jun-2025 la BD tiene 68 de 78 «GD ≤0.1MVA» y 5 de 43 «AGPE 0.1–1MVA», con
+          excluidos idénticos a los incluidos — mismo estado, misma potencia de 990&nbsp;kW. El primer
+          commit del repo es <code>e3a8f6d Recover radar-solar-web project from live Vercel
+          deployment</code>, así que el script original no existe y esa regla se perdió.
+        </p>
+        <p>
+          Por eso el diseño <strong>no depende de conocer esa regla</strong>: se refrescan los
+          registros que ya están y no se agrega ninguno. Como entregable aparte, un reporte con el
+          conteo real de los faltantes por tipo, estado y mes, para decidirlo después con datos en
+          la mano.
+        </p>
+      </section>
+
+      <section id="arquitectura">
+        <h2>Arquitectura</h2>
+        <p class="kicker">Python 3.12, consistente con el proyecto hermano «datos plataforma»</p>
+        <figure>
+<pre><code>air-e CREG030
+   POST /form/WFListadoSolicitud.aspx/ListaSolicitudes  {FECHAINI, FECHAFIN}
+        │  1 llamada por mes · 2019-03 → 2026-09
+        ▼
+scripts/fetch_aire.py ──► data/snapshots/aire-2026-09-10.json   (crudo, commiteado)
+        │
+        ▼
+scripts/build_data.py ──► index.html  (const DATA reinyectado)
+                     └──► data/reports/cambios-2026-09-10.md</code></pre>
+          <figcaption>Dos unidades con una sola responsabilidad cada una.</figcaption>
+        </figure>
+
+        <h3>fetch_aire.py</h3>
+        <p>Única responsabilidad: hablar con air-e y escribir el crudo. No conoce el esquema del radar.</p>
+        <ul>
+          <li>Recorre mes a mes desde <code>2019-03</code> — la solicitud más antigua de la BD es del <code>2019-03-13</code> — hasta el mes actual.</li>
+          <li>Cachea cada mes en disco, así que reintentar tras un fallo no vuelve a bajar lo ya obtenido.</li>
+          <li>Recodifica Latin-1 → UTF-8.</li>
+          <li>Detecta la página HTML de <code>Runtime Error</code> de ASP.NET que el servidor devuelve en lugar de JSON, reintenta, y si insiste falla.</li>
+          <li>Salida: un JSON con los registros crudos deduplicados por <code>CONSECUTIVO</code>, más metadatos de la corrida.</li>
+        </ul>
+
+        <h3>build_data.py</h3>
+        <p>
+          Función pura <code>(snapshot, DATA actual, sheet) → (DATA nuevo, reportes)</code>. Sin red,
+          por lo que se puede testear completa con fixtures.
+        </p>
+        <p>
+          El sheet entra solo para generar el reporte de los códigos sin contraparte en air-e. No
+          alimenta ningún campo del <code>DATA</code>.
+        </p>
+        <div class="note">
+          <p class="eyebrow">Reinyección en index.html</p>
+          <p>
+            El <code>DATA</code> es la línea 395, una sola línea de 480&nbsp;KB. La sustitución
+            localiza el prefijo <code>const DATA = [</code> y el <code>];</code> que lo cierra, y
+            reemplaza solo ese tramo, dejando intacto el resto del archivo —
+            <strong>nunca reescribiendo <code>index.html</code> completo desde una plantilla</strong>,
+            que es la forma fácil de perder los 950 renglones de UI. Se escribe a un temporal y se
+            reemplaza de forma atómica. El JSON se serializa con <code>ensure_ascii=False</code> y
+            UTF-8, para no introducir escapes ni romper las tildes.
+          </p>
+        </div>
+      </section>
+
+      <section id="fusion">
+        <h2>Reglas de fusión</h2>
+        <p class="kicker">Llave: c (external_code)</p>
+        <ul>
+          <li>
+            <strong>Registro presente en el snapshot</strong> → se sobrescriben <code>f, es, cl, ci,
+            co, ve, t, tg, la, lo</code>; se agregan <code>al</code> y <code>ak</code>; se preservan
+            <code>e, se, p, un, b</code>.
+          </li>
+          <li>
+            <strong>Registro ausente del snapshot</strong> → se conserva sin cambios y se lista en el
+            reporte como «no encontrado en air-e» para revisión manual. No se elimina.
+          </li>
+          <li>
+            <strong>No se agregan registros nuevos.</strong> Los 5 códigos del sheet ausentes de la BD
+            van al reporte, no al <code>DATA</code>.
+          </li>
+          <li><strong>Ningún registro se elimina, nunca.</strong></li>
+        </ul>
+        <p>
+          El snapshot debe cubrir los 1.586. Si alguno no aparece, es señal de que el listado por
+          rango de fechas no devuelve todo, y hay que investigarlo antes de confiar en el resultado —
+          no basta con conservar el registro viejo en silencio. Por eso va al reporte de forma
+          destacada.
+        </p>
+      </section>
+
+      <section id="guardas">
+        <h2>Guardas</h2>
+        <p class="kicker">El modo de falla a prevenir es a2cabc2: escribir datos incorrectos que parecen plausibles</p>
+        <ul class="guards">
+          <li>
+            <h3>Identidad propia</h3>
+            <p>Cada registro del snapshot se indexa por su propio <code>CONSECUTIVO</code>. Nunca se asume que una respuesta corresponde a lo que se pidió.</p>
+            <span class="abort">Invariante</span>
+          </li>
+          <li>
+            <h3>Conteo</h3>
+            <p>Si el resultado final tiene menos de 1.586 registros.</p>
+            <span class="abort">Aborta</span>
+          </li>
+          <li>
+            <h3>Deriva de estados</h3>
+            <p>Si más del 25% de los estados cambia en una sola corrida. El movimiento real es gradual; un salto masivo indica un pull defectuoso.</p>
+            <span class="abort">Aborta</span>
+          </li>
+          <li>
+            <h3>Coordenadas</h3>
+            <p>Si algún registro queda sin <code>la</code>/<code>lo</code>. Hoy los 1.586 tienen coordenadas.</p>
+            <span class="abort">Aborta</span>
+          </li>
+        </ul>
+        <p>
+          Un fallo en cualquier mes aborta el build completo. <strong>No se escribe un
+          <code>DATA</code> parcial.</strong>
+        </p>
+      </section>
+
+      <section id="ui">
+        <h2>Interfaz</h2>
+        <p class="kicker">Sobre la estructura que ya existe en index.html</p>
+        <ul>
+          <li><strong>Sidebar</strong> — check <code>Solo con almacenamiento (N)</code>, junto a los filtros de empresa y ciudad, integrado al mismo pipeline de filtrado que alimenta el contador de resultados y el mapa.</li>
+          <li><strong>Popup del mapa y ficha</strong> — línea <code>Almacenamiento: Sí — 250 kWh</code>, o <code>No</code>.</li>
+          <li><strong>Vista Análisis</strong> — tarjeta <code>Con almacenamiento: N solicitudes · X kWh total</code>, junto a los insights actuales.</li>
+          <li><strong>Footer</strong> — <code>Actualizado 2026-09-10</code>; hoy dice <code>2026-09-01</code>.</li>
+        </ul>
+        <p>
+          No se agrega columna a la vista Tabla: el almacenamiento aparece en cerca del 2% de las
+          solicitudes — 3 de 177 en oct-2024 — y la columna quedaría casi vacía.
+        </p>
+      </section>
+
+      <section id="pruebas">
+        <h2>Pruebas</h2>
+        <ul>
+          <li><strong>Unitarias de <code>build_data.py</code></strong> con fixtures: que preserve <code>e</code> y <code>se</code>, que no pierda registros, que aplique <code>al</code> y <code>ak</code> correctamente, y que cada guarda dispare cuando debe.</li>
+          <li><strong>Registro golden: 21941</strong>, contra <code>ejemplo.pdf</code>. Ya verificado campo por campo: <code>2024-10-30 14:32</code>, <code>Estudio solicitud</code>, <code>Green Yellow Energia de Colombia SAS</code>, <code>ARACATACA</code> / <code>ARACATACA</code>, <code>10.63491</code> / <code>-74.23092</code>, <code>Solar FV</code>, almacenamiento <code>No</code>, <code>0</code> kWh.</li>
+          <li><strong>Validación de <code>al</code>/<code>ak</code></strong>: comprobar contra registros con <code>al=1</code> que traigan <code>ak &gt; 0</code>. Si aparece una incoherencia, se reporta en vez de interpretarla.</li>
+          <li><strong>Post-build</strong>: reabrir <code>index.html</code>, reparsear el <code>DATA</code>, verificar conteo y muestras. Si el archivo no queda parseable, el build falla.</li>
+          <li><strong>Revisión humana del reporte de cambios</strong> antes de commitear y desplegar.</li>
+        </ul>
+      </section>
+
+      <section id="entregables">
+        <h2>Entregables</h2>
+        <ul>
+          <li><code>scripts/fetch_aire.py</code>, <code>scripts/build_data.py</code> y sus tests</li>
+          <li><code>data/snapshots/aire-2026-09-10.json</code></li>
+          <li><code>data/reports/cambios-2026-09-10.md</code></li>
+          <li><code>index.html</code> con 1.586 registros verificados contra air-e y campos de almacenamiento</li>
+          <li>Reporte del universo air-e no incorporado, por tipo, estado y mes</li>
+          <li>Reporte de los 5 códigos del sheet sin contraparte en air-e</li>
+        </ul>
+      </section>
+
+      <section id="fuera">
+        <h2>Fuera de alcance</h2>
+        <ul class="scope">
+          <li>
+            <span class="chip chip--warn">Después</span>
+            <div>
+              <p class="lead">Cómo carga la app</p>
+              <p>Los datos siguen embebidos en <code>index.html</code> como archivo único. Sacarlos a un <code>data.json</code> haría los diffs de git legibles — hoy los 1.586 registros son una sola línea de 480&nbsp;KB, de ahí la cadena de commits <code>Backfill</code> / <code>Revert</code> / <code>Backfill</code> — pero mezclar un cambio de arquitectura de carga con una actualización de datos multiplica el riesgo. Queda como paso posterior, pequeño y aislado.</p>
+            </div>
+          </li>
+          <li>
+            <span class="chip chip--warn">Después</span>
+            <div>
+              <p class="lead">Despliegue a Vercel</p>
+              <p>Se decide después de revisar el reporte de cambios.</p>
+            </div>
+          </li>
+          <li>
+            <span class="chip chip--warn">Después</span>
+            <div>
+              <p class="lead">Incorporar registros nuevos de air-e</p>
+              <p>Decisión aplazada, con el reporte de faltantes como insumo.</p>
+            </div>
+          </li>
+        </ul>
+      </section>
+
+    </main>
+  </div>
+
+  <footer>
+    <p>
+      El documento fuente vive en el repo del radar, en
+      <code>docs/superpowers/specs/2026-09-10-radar-solar-consulta-aire-design.md</code>,
+      commiteado en <code>ed8f130</code> sobre la rama <code>consulta-aire-almacenamiento</code>.
+      Nada se ha desplegado a Vercel.
+    </p>
+  </footer>
+
+</div>

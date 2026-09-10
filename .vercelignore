@@ -1,0 +1,7 @@
+# Documentacion interna: no debe quedar servida publicamente en el deployment.
+# El sitio se despliega como estatico, asi que todo archivo del repo seria
+# alcanzable por URL si no se excluye aqui.
+docs/
+data/
+scripts/
+tests/
