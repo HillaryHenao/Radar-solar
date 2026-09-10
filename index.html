@@ -166,6 +166,11 @@ input:focus-visible, select:focus-visible, button:focus-visible, .chip:focus-vis
 .change-from{ color:var(--text-muted); }
 .change-to{ font-weight:600; }
 .changes-empty{ padding:20px; text-align:center; color:var(--text-muted); font-size:.82rem; }
+.alm-head{ display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; }
+.alm-total{ font-size:.82rem; color:var(--text-muted); font-variant-numeric:tabular-nums; }
+.alm-scroll{ max-height:340px; overflow:auto; }
+.alm-table td.kwh, .alm-table th.kwh{ text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.alm-empty{ padding:14px; font-size:.86rem; color:var(--text-muted); }
 .insight-row{ display:flex; align-items:center; gap:8px; font-size:.78rem; padding:2.5px 0; }
 .insight-name{ flex:0 0 42%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .insight-bar-wrap{ flex:1; height:7px; background:var(--border); border-radius:4px; overflow:hidden; }
@@ -529,6 +534,7 @@ function refresh(){
   renderList(filtered);
   renderTable();
   renderAnalysis();
+  renderAlmacenamiento();
 }
 
 // ---------- table view ----------
@@ -639,6 +645,25 @@ function buildAnalysisSkeleton(){
       '</div>'+
     '</section>';
 
+  html += '<section class="analysis-batch almacenamiento-section">'+
+      '<div class="analysis-batch-head alm-head">'+
+        '<h2 class="analysis-batch-title">Proyectos con almacenamiento</h2>'+
+        '<span class="analysis-batch-count" id="almcnt"></span>'+
+        '<span class="alm-total" id="almkwh"></span>'+
+      '</div>'+
+      '<p class="section-note">Capacidad declarada en la solicitud CREG030. Respeta los filtros activos.</p>'+
+      '<div class="table-scroll alm-scroll">'+
+        '<table class="changes-table alm-table">'+
+          '<thead><tr>'+
+            '<th>Código</th><th>Empresa</th><th>Cliente</th><th>Municipio</th>'+
+            '<th>Tipo de generación</th><th>Estado air-e</th><th>Estado Sheet</th>'+
+            '<th>Fecha solicitud</th><th class="kwh">Capacidad (kWh)</th>'+
+          '</tr></thead>'+
+          '<tbody id="almbody"></tbody>'+
+        '</table>'+
+      '</div>'+
+    '</section>';
+
   html += years.map(year=>
     '<section class="analysis-batch" data-year="'+year+'">'+
       '<div class="analysis-batch-head">'+
@@ -723,6 +748,45 @@ function renderAnalysis(){
       '<td>'+(DEPT_MAP[c.ci]||'Sin clasificar')+'</td>'+
       '<td class="mono">'+(byCode.get(c.c).f||'—')+'</td>'+
       '<td><span class="change-arrow"><span class="change-from">'+c.from+'</span> → <span class="change-to">'+c.to+'</span></span></td>'+
+    '</tr>'
+  ).join('');
+  body.querySelectorAll('tr').forEach(tr=>{
+    tr.addEventListener('click', ()=>{
+      const d = DATA.find(x=>x.c===tr.dataset.code);
+      if(!d) return;
+      setView('map');
+      selectPoint(d);
+    });
+  });
+}
+function renderAlmacenamiento(){
+  const rows = getFiltered().filter(d=>d.al===true).sort((a,b)=>Number(b.ak||0)-Number(a.ak||0));
+  const kwh = rows.reduce((acc,d)=>acc+Number(d.ak||0), 0);
+  document.getElementById('almcnt').textContent = '('+rows.length.toLocaleString('es-CO')+' solicitud'+(rows.length===1?'':'es')+')';
+  document.getElementById('almkwh').textContent = kwh.toLocaleString('es-CO')+' kWh en total';
+
+  const body = document.getElementById('almbody');
+  const tabla = document.querySelector('.almacenamiento-section .alm-table');
+  document.querySelector('.alm-empty')?.remove();
+  if(!rows.length){
+    tabla.hidden = true;
+    body.innerHTML = '';
+    document.querySelector('.alm-scroll').insertAdjacentHTML('beforeend',
+      '<div class="alm-empty">Ninguna solicitud visible cuenta con almacenamiento.</div>');
+    return;
+  }
+  tabla.hidden = false;
+  body.innerHTML = rows.map(d=>
+    '<tr data-code="'+escAttr(d.c)+'">'+
+      '<td class="code">#'+d.c+'</td>'+
+      '<td title="'+escAttr(d.e||'')+'">'+(d.e||'—')+'</td>'+
+      '<td title="'+escAttr(d.cl||'')+'">'+(d.cl||'—')+'</td>'+
+      '<td>'+(d.ci||'—')+'</td>'+
+      '<td>'+(d.tg||'—')+'</td>'+
+      '<td>'+(d.es||'—')+'</td>'+
+      '<td>'+(d.se || '—')+'</td>'+
+      '<td class="mono">'+(d.f||'—')+'</td>'+
+      '<td class="kwh">'+Number(d.ak||0).toLocaleString('es-CO')+'</td>'+
     '</tr>'
   ).join('');
   body.querySelectorAll('tr').forEach(tr=>{
@@ -830,6 +894,11 @@ document.getElementById('fitBtn').addEventListener('click', fitToFiltered);
 
 const detailEl = document.getElementById('detail');
 const detailBody = document.getElementById('detailBody');
+function almacenamientoTexto(d){
+  if(d.al === true) return 'Sí — '+Number(d.ak||0).toLocaleString('es-CO')+' kWh';
+  if(d.al === false) return 'No';
+  return 'Sin dato';
+}
 function selectPoint(d){
   state.selected = d;
   detailBody.innerHTML =
@@ -845,6 +914,7 @@ function selectPoint(d){
       '<dt>Dirección</dt><dd>'+addressLine(d)+'</dd>'+
       '<dt>F. solicitud</dt><dd class="mono">'+(d.f||'—')+'</dd>'+
       '<dt>Tecnología</dt><dd>'+(d.t||'—')+' · '+(d.tg||'')+'</dd>'+
+      '<dt>Almacenamiento</dt><dd>'+almacenamientoTexto(d)+'</dd>'+
       '<dt>Coordenadas</dt><dd class="mono">'+d.la+', '+d.lo+'</dd>'+
     '</dl>'+
     '<div class="detail-actions">'+
