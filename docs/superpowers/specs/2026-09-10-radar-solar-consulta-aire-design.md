@@ -201,7 +201,14 @@ Análisis nacería con 2 filas de 10 y 5 kWh y la función sería decorativa.
 
 ### Regla de inclusión
 
-**Se incorporan los registros con `al = true` y `tg` que empieza por `GD`.**
+**Se incorporan los registros con `al = true` y `tg` que empieza por `GD` o por
+`AG ` (con el espacio final).** air-e tiene cuatro valores de `tg`: `GD`, `AGPE`
+(dos variantes por potencia) y `AG` — este ultimo es la clase de mayor
+capacidad y, como `GD`, es escala de red/planta, a diferencia de `AGPE`
+(autogeneracion a pequena escala, tipicamente techo residencial o comercial).
+El espacio en `"AG "` es deliberado: sin el, el prefijo tambien haria match
+con `AGPE`, justo la clase que se debe excluir.
+
 Aplicada al universo completo da exactamente 3, ninguno presente en la BD:
 
 | Código | Capacidad | Potencia AC | Estado | Cliente | Municipio |
@@ -212,9 +219,14 @@ Aplicada al universo completo da exactamente 3, ninguno presente en la BD:
 
 Concentran **12.932 kWh**, cerca del 30% de todo el almacenamiento del Caribe.
 
+La categoría `AG menor igual 5MVA y mayor 1MVA` tiene 105 registros en el
+universo air-e y ninguno con almacenamiento hoy, así que incluirla en la regla
+no cambia el resultado de esta corrida: sigue dando exactamente las mismas 3
+altas. Es autocuidado hacia adelante, no una corrección de esta medición.
+
 La regla se evalúa en cada corrida, no es una lista fija: si air-e registra un
-nuevo proyecto GD con almacenamiento, entra solo, y el reporte lo declara como
-alta. Eso mantiene el radar al día en lo que motiva esta función.
+nuevo proyecto GD o AG con almacenamiento, entra solo, y el reporte lo declara
+como alta. Eso mantiene el radar al día en lo que motiva esta función.
 
 **Caso de frontera documentado:** `21489` tiene `al = true` y
 `tg = AGPE menor igual 1MVA y mayor 0.1MVA`, con 5 kWh y 10 kW AC a nombre de una
@@ -348,24 +360,62 @@ romperse con el vacío.
 ## Guardas
 
 El modo de falla a prevenir es el de `a2cabc2`: escribir datos incorrectos que
-parecen plausibles. Todas **abortan sin escribir nada**:
+parecen plausibles. Todas **abortan sin escribir nada**. Son **10 en total**,
+no 7 como decía una versión anterior de este spec: dos viven en la capa de red
+(`aire_client.py` / `fetch_aire.py`), siete son los caminos de abort de
+`_valida_guardas` en `scripts/merge.py`, y una más, separada, vive en
+`fusionar` mismo.
+
+### En la capa de red
 
 1. **Identidad propia.** Cada registro del snapshot se indexa por su propio
    `CONSECUTIVO`. Nunca se asume que una respuesta corresponde a lo que se pidió.
-2. **Cobertura de red.** Si alguna de las 93 ventanas falla, aborta. No se
-   construye con un snapshot parcial.
+2. **Cobertura de red.** Si alguna de las 93 ventanas falla tras sus
+   reintentos, `fetch_aire` aborta con el error de air-e y aclara que el
+   comando es idempotente. No se construye con un snapshot parcial.
+
+### En `_valida_guardas` (`scripts/merge.py`)
+
 3. **Conteo.** Si el resultado tiene menos de 1.589 registros, aborta.
-4. **Deriva de estados.** Si más del **5%** de los estados cambia en una corrida,
-   aborta. El referente: el commit `550f264` movió 11 estados de 1.586, o sea
-   0,7%, y esta corrida mueve 0. Un salto masivo significa pull defectuoso.
-5. **Coordenadas.** Si algún registro queda sin `la`/`lo`, aborta.
+4. **No eliminación.** Ningún registro puede desaparecer entre `actuales` y la
+   salida fusionada, sin importar cuánto crezca `DATA` más allá de 1.589 (el
+   piso estático de la guarda de conteo se queda corto si eso pasa). Es una
+   invariante directa e independiente de esa guarda, no alcanzable hoy a
+   través de la API pública de `fusionar`, pero defensiva ante un refactor
+   futuro.
+5. **Sin contraparte.** Si más de un **tope absoluto de 3** registros actuales
+   no aparecen en el snapshot, aborta. Es un tope absoluto, no un porcentaje:
+   un umbral del 1% tolera 15 desapariciones sobre 1.589 registros, y ese
+   margen crece sin límite a medida que la BD crece, cuando en datos reales
+   este valor debe ser 0.
 6. **Estados conocidos.** Si aparece un `es` que no está en `ESTADO_ORDER`,
    aborta. El universo air-e contiene `Normalizado`, que la UI no conoce: entraría
    sin color en el mapa y sin chip en el filtro. Hoy no afecta a ningún registro
    de la BD, y esta guarda evita que una alta futura rompa la UI en silencio.
-7. **Municipios clasificados.** Si un registro entra con `ci` fuera de
+   Va antes que la de deriva a propósito: un estado desconocido *es* la causa
+   de la deriva, así que el diagnóstico específico debe ganarle a la alarma
+   genérica.
+7. **Deriva de estados.** Si más del **5%** de los estados cambia en una corrida,
+   aborta. El referente: el commit `550f264` movió 11 estados de 1.586, o sea
+   0,7%, y esta corrida mueve 0. Un salto masivo significa pull defectuoso.
+8. **Coordenadas.** Si algún registro queda con `la`/`lo` fuera de la caja del
+   Caribe colombiano (latitud 9,0–12,6, longitud -76,0– -71,5), aborta,
+   nombrando los códigos y coordenadas ofensivas. No es un simple chequeo de
+   "no es `None`": esa versión no atrapaba el centinela `0.0` (un
+   `LATITUD: 0` pondría un pin en el Golfo de Guinea y pasaría todo). El
+   registro `11142` del universo air-e declara `LATITUD: 1.10311` para
+   "PUERTO COLOMBIA" —en el Amazonas, no el Caribe—; no está entre los 1.589,
+   así que hoy la guarda no se dispara, pero sí lo haría si ese código
+   entrara algún día.
+9. **Municipios clasificados.** Si un registro entra con `ci` fuera de
    `DEPT_MAP`, aborta. Evita que aparezca como «Sin clasificar» sin que nadie lo
    note.
+
+### En `fusionar`
+
+10. **Empresa asignada para un alta.** Si un código cumple la regla de
+    inclusión (`GD` o `AG ` con almacenamiento) y no tiene empresa asignada en
+    `EMPRESAS_ALTAS`, aborta y pide la asignación a mano. No inventa el valor.
 
 El umbral del 5% no necesita excepción para la corrida inicial: la deriva medida
 es 0. Se registró la duda porque el diseño original suponía que esta corrida era
@@ -472,9 +522,16 @@ caso mejor.
 - `data/reports/cambios-2026-09-10.md`
 - `index.html` con 1.589 registros validados contra air-e, campos de
   almacenamiento, filtro en el sidebar, tabla en Análisis y `DEPT_MAP` corregido
-- Reportes: universo air-e no incorporado por tipo/estado/mes; los 5 códigos del
-  sheet sin contraparte; los 312 residenciales con almacenamiento; el caso
-  `21489`; los 3 registros con `al=true` y `ak=0`
+- Reportes, todos como agregados dentro de `data/reports/cambios-<fecha>.md`
+  (nunca como listado fila por fila): el universo air-e no incorporado por
+  tipo/estado/mes (sección "Universo air-e no incorporado"); los 312
+  residenciales con almacenamiento y el caso `21489` como candidatos excluidos
+  por la regla de altas; los 3 registros con `al=true` y `ak=0` como
+  almacenamiento incoherente. Los 5 códigos del sheet sin contraparte en air-e
+  (`C139`, `C153`, `C159`, `20707`, `20715`) **no** están en ese reporte
+  generado — quedan documentados en este spec, en "Los 5 códigos del sheet que
+  no están en la BD", porque el pipeline no lee el sheet y no tiene forma de
+  producirlos por su cuenta.
 
 ## Fuera de alcance
 

@@ -5,3 +5,5 @@ docs/
 data/
 scripts/
 tests/
+.superpowers/
+.pytest_cache/

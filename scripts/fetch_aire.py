@@ -18,7 +18,8 @@ import sys
 from datetime import date, datetime
 from pathlib import Path
 
-from scripts.aire_client import fetch_window, month_windows
+from scripts.aire_client import AireError, _next_month, fetch_window, month_windows
+from scripts.inject import InjectError, escribir_atomico
 from scripts.transform import to_row
 
 RAIZ = Path(__file__).resolve().parent.parent
@@ -34,10 +35,19 @@ def _mes(texto: str) -> date:
         ) from exc
 
 
-def _primero_del_mes_siguiente(hoy: date) -> date:
-    if hoy.month == 12:
-        return date(hoy.year + 1, 1, 1)
-    return date(hoy.year, hoy.month + 1, 1)
+def _clave_orden(codigo: str) -> tuple[int, object]:
+    """Orden numerico por CONSECUTIVO, con los codigos no numericos al final.
+
+    `int(f["c"])` lanzaria ValueError si algun dia air-e devolviera un
+    CONSECUTIVO no numerico (como los codigos internos `C139`/`C153`/`C159`
+    del sheet), y eso pasaria *despues* de que el pull completo de ~10 minutos
+    ya termino. Mejor ordenar tolerando esos casos y reportarlos que perder el
+    pull entero.
+    """
+    try:
+        return (0, int(codigo))
+    except ValueError:
+        return (1, codigo)
 
 
 def descargar(desde: date, hasta: date) -> list[dict]:
@@ -57,14 +67,21 @@ def descargar(desde: date, hasta: date) -> list[dict]:
             file=sys.stderr,
         )
 
-    return sorted(por_codigo.values(), key=lambda f: int(f["c"]))
+    filas = sorted(por_codigo.values(), key=lambda f: _clave_orden(f["c"]))
+    no_numericos = [f["c"] for f in filas if not f["c"].isdigit()]
+    if no_numericos:
+        print(
+            f"codigos no numericos, ordenados al final: {no_numericos}",
+            file=sys.stderr,
+        )
+    return filas
 
 
 def main(argv: list[str] | None = None) -> int:
     hoy = date.today()
     parser = argparse.ArgumentParser(description="Descarga el historico de air-e.")
     parser.add_argument("--desde", type=_mes, default=DESDE_POR_DEFECTO)
-    parser.add_argument("--hasta", type=_mes, default=_primero_del_mes_siguiente(hoy))
+    parser.add_argument("--hasta", type=_mes, default=_next_month(hoy))
     parser.add_argument(
         "--salida",
         type=Path,
@@ -72,12 +89,22 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    filas = descargar(args.desde, args.hasta)
+    try:
+        filas = descargar(args.desde, args.hasta)
+    except AireError as exc:
+        raise SystemExit(
+            f"{exc}\n"
+            "Este comando es idempotente: se puede volver a correr sin riesgo, "
+            "no deja un snapshot a medio escribir."
+        )
+
     args.salida.parent.mkdir(parents=True, exist_ok=True)
-    args.salida.write_text(
-        json.dumps(filas, ensure_ascii=False, indent=0),
-        encoding="utf-8",
-    )
+    try:
+        escribir_atomico(
+            args.salida, json.dumps(filas, ensure_ascii=False, indent=0)
+        )
+    except InjectError as exc:
+        raise SystemExit(str(exc))
     print(f"{len(filas)} registros unicos en {args.salida}", file=sys.stderr)
     return 0
 

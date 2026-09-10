@@ -27,5 +27,11 @@ Correr los tests: `python -m pytest`
 - **Las altas necesitan empresa asignada a mano** en `EMPRESAS_ALTAS`. Si la
   regla de almacenamiento captura un código nuevo sin empresa, el build falla y
   lo pide: no inventa el valor.
-- Las 7 guardas abortan sin escribir. Si una se dispara, el mensaje dice qué
+- Las guardas abortan sin escribir. Son 8 en total, y no las 7 del spec (ese
+  numero cuenta identidad propia y cobertura de red, que viven en
+  `aire_client.py`/`fetch_aire.py`, no en `merge.py`): `_valida_guardas` en
+  `scripts/merge.py` tiene 7 caminos de abort (conteo, no eliminación, sin
+  contraparte, estados conocidos, deriva de estados, coordenadas fuera del
+  Caribe, municipios sin `DEPT_MAP`), y `fusionar` tiene una octava, separada,
+  para un alta sin empresa asignada. Si una se dispara, el mensaje dice qué
   revisar.

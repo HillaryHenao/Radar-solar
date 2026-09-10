@@ -515,10 +515,7 @@ function updateEstadoChipCounts(){
 function updateAlmacenamientoCount(){
   // Cuenta sobre los visibles por los demas filtros, ignorando este, para que
   // el numero diga "cuantos se ven si lo activo".
-  const previo = state.soloAlmacenamiento;
-  state.soloAlmacenamiento = false;
   const n = DATA.filter(d=>state.estados.has(d.es) && passesOtherFilters(d) && d.al===true).length;
-  state.soloAlmacenamiento = previo;
   document.getElementById('almacenamientoCount').textContent = n.toLocaleString('es-CO');
 }
 

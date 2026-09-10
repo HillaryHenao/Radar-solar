@@ -9,10 +9,18 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 from pathlib import Path
 
 PREFIJO = "const DATA = ["
+
+# Coincide con "Actualizado YYYY-MM-DD" dentro del div `sidebar-foot`, sin
+# depender del resto del markup de ese pie (fuente, separador, etc).
+_FOOTER_FECHA = re.compile(
+    r'(<div class="sidebar-foot">.*?Actualizado )(\d{4}-\d{2}-\d{2})(.*?</div>)',
+    re.DOTALL,
+)
 
 
 class InjectError(RuntimeError):
@@ -54,6 +62,25 @@ def reemplazar_data(html: str, filas: list[dict]) -> str:
     inicio, fin = _limites(html)
     payload = json.dumps(filas, ensure_ascii=False, separators=(",", ":"))
     return html[:inicio] + "const DATA = " + payload + html[fin:]
+
+
+def actualizar_fecha_footer(html: str, fecha: str) -> str:
+    """Reemplaza la fecha `Actualizado YYYY-MM-DD` dentro de `sidebar-foot`.
+
+    Cada build reescribe los 1.589+ registros de `DATA` pero, sin esto, deja
+    el pie de pagina reclamando la fecha de la corrida anterior a mano. Se
+    edita como un tramo estructural propio -igual que `reemplazar_data`- en
+    vez de otro regex disperso en `build_data`.
+    """
+    salida, n = _FOOTER_FECHA.subn(
+        lambda m: m.group(1) + fecha + m.group(3), html, count=1
+    )
+    if n == 0:
+        raise InjectError(
+            "no se encontro 'Actualizado YYYY-MM-DD' dentro de sidebar-foot "
+            "en el archivo. Verificar que el markup del footer no haya cambiado."
+        )
+    return salida
 
 
 def leer_html(origen: Path) -> str:

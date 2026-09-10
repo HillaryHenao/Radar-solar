@@ -5,6 +5,7 @@ import pytest
 
 from scripts.inject import (
     InjectError,
+    actualizar_fecha_footer,
     escribir_atomico,
     leer_data,
     leer_html,
@@ -68,6 +69,23 @@ def test_reemplazar_data_falla_si_el_array_no_parsea():
     roto = "<script>const DATA = [{'c':1,</script>"
     with pytest.raises(InjectError):
         reemplazar_data(roto, [])
+
+
+def test_actualizar_fecha_footer_reemplaza_la_fecha_del_pie():
+    html = (
+        '<div class="sidebar-foot">Fuente: servicios.air-e.com/CREG030 '
+        '&middot; Actualizado 2026-09-01</div>'
+    )
+    salida = actualizar_fecha_footer(html, "2026-10-05")
+    assert "Actualizado 2026-10-05" in salida
+    assert "2026-09-01" not in salida
+    # El resto del div queda intacto.
+    assert "Fuente: servicios.air-e.com/CREG030" in salida
+
+
+def test_actualizar_fecha_footer_falla_si_no_encuentra_el_footer():
+    with pytest.raises(InjectError, match="sidebar-foot"):
+        actualizar_fecha_footer("<html><body>sin footer</body></html>", "2026-10-05")
 
 
 def test_escribir_atomico_no_deja_temporales(tmp_path):

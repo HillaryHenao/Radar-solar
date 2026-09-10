@@ -101,9 +101,9 @@ def test_huerfano_conserva_su_al_y_ak_si_ya_los_tenia():
 
 
 def test_conserva_el_registro_ausente_del_snapshot():
-    # Lote de 100 con un solo faltante (1%, justo en el umbral de la guarda
-    # de sin contraparte, no por encima) para poder verificar la conservacion
-    # sin disparar esa guarda.
+    # Lote de 100 con un solo faltante, bien bajo el tope absoluto de la
+    # guarda de sin contraparte, para poder verificar la conservacion sin
+    # disparar esa guarda.
     actuales = [_actual(c=str(i)) for i in range(100)]
     snapshot = [_snap(c=str(i)) for i in range(99)]  # falta "99"
     filas, informe = _fusionar(actuales, snapshot, total_minimo=1)
@@ -114,8 +114,8 @@ def test_conserva_el_registro_ausente_del_snapshot():
 
 
 def test_nunca_elimina_registros():
-    # Varios faltantes (2 de 300, bajo el umbral de sin contraparte) para
-    # confirmar que ninguno desaparece de la salida.
+    # Varios faltantes (2 de 300, bajo el tope absoluto de sin contraparte)
+    # para confirmar que ninguno desaparece de la salida.
     actuales = [_actual(c=str(i)) for i in range(300)]
     snapshot = [_snap(c=str(i)) for i in range(298)]  # faltan "298" y "299"
     filas, _ = _fusionar(actuales, snapshot, total_minimo=1)
@@ -128,6 +128,23 @@ def test_es_alta_solo_para_gd_con_almacenamiento():
     assert es_alta({"al": True, "tg": "AGPE menor igual 1MVA y mayor 0.1MVA"}) is False
     assert es_alta({"al": False, "tg": "GD menor igual 0.1MVA"}) is False
     assert es_alta({"al": None, "tg": "GD menor igual 0.1MVA"}) is False
+
+
+def test_es_alta_incluye_ag_de_escala_de_red():
+    # AG menor igual 5MVA y mayor 1MVA es la clase de mayor capacidad y es
+    # escala de red, igual que GD: la regla original la dejaba invisible
+    # porque "AG" no empieza con "GD".
+    assert es_alta(
+        {"al": True, "tg": "AG menor igual 5MVA y mayor 1MVA"}
+    ) is True
+
+
+def test_es_alta_no_confunde_ag_con_agpe():
+    # "AG " (con espacio) no debe hacer match por prefijo con "AGPE": son
+    # clases opuestas, escala de red contra autogeneracion residencial.
+    assert es_alta(
+        {"al": True, "tg": "AGPE menor igual 1MVA y mayor 0.1MVA"}
+    ) is False
 
 
 def test_incorpora_el_alta_con_sus_campos_propios(monkeypatch):
@@ -231,6 +248,21 @@ def test_guarda_sin_contraparte_aborta_pull_fallido():
         _fusionar(actuales, [], total_minimo=1)
 
 
+def test_guarda_sin_contraparte_permite_hasta_el_tope():
+    actuales = [_actual(c=str(i)) for i in range(10)]
+    snapshot = [_snap(c=str(i)) for i in range(7)]  # faltan 3: justo en el tope
+    filas, informe = _fusionar(actuales, snapshot, total_minimo=1)
+    assert len(informe["sin_contraparte"]) == 3
+    assert len(filas) == 10
+
+
+def test_guarda_sin_contraparte_aborta_por_encima_del_tope():
+    actuales = [_actual(c=str(i)) for i in range(10)]
+    snapshot = [_snap(c=str(i)) for i in range(6)]  # faltan 4: sobre el tope
+    with pytest.raises(MergeError, match="sin contraparte"):
+        _fusionar(actuales, snapshot, total_minimo=1)
+
+
 def test_guarda_deriva_aborta_sobre_el_5_por_ciento():
     actuales = [_actual(c=str(i)) for i in range(100)]
     snapshot = [_snap(c=str(i), es="Pendiente documento") for i in range(100)]
@@ -247,15 +279,15 @@ def test_guarda_deriva_permite_un_movimiento_normal():
 
 
 def test_guarda_deriva_usa_el_denominador_correcto_con_snapshot_parcial():
-    # 1000 actuales, 9 sin contraparte (0.9%, bajo el umbral de la guarda de
-    # sin contraparte) y 50 movimientos entre los 991 que si se compararon.
-    # Con el denominador viejo (len(actuales)): 50/1000 = 5.0%, justo en el
-    # umbral, no dispara. Con el denominador correcto (solo comparados):
-    # 50/991 = 5.05%, si dispara. Ninguno de los dos tests de deriva
-    # existentes distingue esto porque usan cobertura completa, donde ambos
-    # denominadores son numericamente identicos.
+    # 1000 actuales, 3 sin contraparte (justo en el tope absoluto de esa
+    # guarda, no por encima) y 50 movimientos entre los 997 que si se
+    # compararon. Con el denominador viejo (len(actuales)): 50/1000 = 5.0%,
+    # justo en el umbral, no dispara. Con el denominador correcto (solo
+    # comparados): 50/997 = 5.02%, si dispara. Ninguno de los dos tests de
+    # deriva existentes distingue esto porque usan cobertura completa, donde
+    # ambos denominadores son numericamente identicos.
     actuales = [_actual(c=str(i)) for i in range(1000)]
-    snapshot = [_snap(c=str(i)) for i in range(991)]
+    snapshot = [_snap(c=str(i)) for i in range(997)]
     for i in range(50):
         snapshot[i]["es"] = "Pendiente documento"
     with pytest.raises(MergeError, match="deriva de estados"):
@@ -265,6 +297,21 @@ def test_guarda_deriva_usa_el_denominador_correcto_con_snapshot_parcial():
 def test_guarda_coordenadas_aborta_si_falta_una():
     with pytest.raises(MergeError, match="coordenadas"):
         _fusionar([_actual()], [_snap(la=None)])
+
+
+def test_guarda_coordenadas_aborta_fuera_del_caribe():
+    # Registro real 11142 del universo air-e: LATITUD 1.10311 para "PUERTO
+    # COLOMBIA" cae en el Amazonas, no en el Caribe. Un chequeo de "no es
+    # None" no lo atraparia.
+    with pytest.raises(MergeError, match="coordenadas"):
+        _fusionar([_actual()], [_snap(la=1.10311, lo=-74.5)])
+
+
+def test_guarda_coordenadas_aborta_con_el_centinela_cero():
+    # LATITUD/LONGITUD en 0.0 es un punto valido para "is None" y pondria un
+    # pin en el Golfo de Guinea sin que la guarda anterior lo notara.
+    with pytest.raises(MergeError, match="coordenadas"):
+        _fusionar([_actual()], [_snap(la=0.0, lo=0.0)])
 
 
 def test_guarda_estados_conocidos_aborta_con_un_estado_nuevo():
@@ -328,3 +375,50 @@ def test_render_reporte_declara_los_bloques():
     assert "# Reporte de cambios" in texto
     assert "Cliente Nuevo" in texto
     assert "Deriva de estados" in texto
+
+
+def test_render_reporte_con_datos_reales_en_todas_las_secciones():
+    # `render_reporte` solo se testeaba con un informe vacio: toda la
+    # superficie de tablas quedaba sin cubrir, incluyendo dos formas de
+    # crash reales si `ak` alguna vez fuera string o None: el sort hace
+    # `float(x["ak"])` y la fila hace `{cand['ak']:g}`.
+    informe = {
+        "fecha": "2026-09-10",
+        "cambios": [
+            {"c": "23465", "campo": "ve", "antes": "VDA  CHARCO LATA",
+             "despues": "VDA CHARCO LATA"},
+        ],
+        "altas": ["25857"],
+        "sin_contraparte": ["999999"],
+        "deriva_estados": 0.01,
+        "candidatos_excluidos": [
+            {"c": "23751", "tg": "AGPE menor igual 0.1MVA", "ak": 20480.0,
+             "ci": "PLATO", "cl": "JOAQUIN CESAR CAMARGO MOLINA", "pac": 24.0},
+            {"c": "8221", "tg": "AGPE menor igual 0.1MVA", "ak": 3000.0,
+             "ci": "BARRANQUILLA", "cl": "ESTHER ZAIDA SOLIS ANDRADE", "pac": 3000.0},
+            {"c": "21489", "tg": "AGPE menor igual 1MVA y mayor 0.1MVA", "ak": 5.0,
+             "ci": "RIOHACHA", "cl": "PERSONA NATURAL", "pac": 10.0},
+        ],
+        "almacenamiento_incoherente": ["362"],
+        "total": 1589,
+        "universo_aire": 10641,
+        "con_almacenamiento_aire": 316,
+        "no_incorporado_total": 9049,
+        "no_incorporado_por_tg": {"AGPE menor igual 0.1MVA": 8500, "GD menor igual 0.1MVA": 549},
+        "no_incorporado_por_es": {"Estudio solicitud": 6000, "De Baja": 3049},
+        "no_incorporado_por_mes": {"2026-08": 40, "2026-09": 12},
+    }
+    texto = render_reporte(informe)
+
+    assert "`23465`" in texto and "VDA CHARCO LATA" in texto
+    assert "`25857`" in texto and "GECELCA" in texto
+    assert "`999999`" in texto
+    assert "## Registros de la BD que air-e ya no devuelve" in texto
+    assert "C139" in texto and "20715" in texto
+    assert "`23751`" in texto and "20480" in texto
+    assert "`362`" in texto
+    assert "## Universo air-e no incorporado" in texto
+    assert "9049" in texto
+    assert "AGPE menor igual 0.1MVA" in texto and "8500" in texto
+    assert "Estudio solicitud" in texto and "6000" in texto
+    assert "2026-09" in texto and "12" in texto

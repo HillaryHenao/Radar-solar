@@ -6,6 +6,7 @@ bugs de verdad, asi que se testea completa con fixtures.
 
 from __future__ import annotations
 
+from collections import Counter
 from datetime import date
 
 # Campos que air-e manda y sobrescriben lo que hay.
@@ -28,10 +29,19 @@ assert not set(CAMPOS_DE_AIRE) & set(CAMPOS_PROPIOS), (
 # reportar como "cambio" en el informe.
 DECIMALES_COORDENADAS = 5
 
-# Umbral de registros actuales que pueden quedar sin contraparte en el
-# snapshot antes de sospechar un pull fallido o incompleto (F5). En datos
-# reales este valor es 0.
-UMBRAL_SIN_CONTRAPARTE = 0.01
+# Tope absoluto (no porcentaje) de registros actuales que pueden quedar sin
+# contraparte en el snapshot antes de sospechar un pull fallido o incompleto
+# (F5). En datos reales este valor es 0. Un porcentaje se queda corto: al 1%
+# sobre 1.589 registros tolera 15 desapariciones, y ese margen absoluto crece
+# sin limite a medida que la BD crece, cuando el spec exige que esto sea 0 en
+# la practica.
+TOPE_SIN_CONTRAPARTE = 3
+
+# Caja delimitadora del Caribe colombiano, con margen: cubre el territorio de
+# air-e. Reemplaza un chequeo de "no es None", que no atrapa el centinela
+# `0.0` (un `LATITUD: 0` pondria un pin en el Golfo de Guinea y pasaria todo).
+LAT_MIN, LAT_MAX = 9.0, 12.6
+LON_MIN, LON_MAX = -76.0, -71.5
 
 # Empresa de cada alta. Se asigna a mano: son pocas, `e` alimenta el filtro y
 # los rankings, y una heuristica sobre NOMBRE_CLI produciria basura.
@@ -51,13 +61,20 @@ class MergeError(RuntimeError):
 
 
 def es_alta(fila: dict) -> bool:
-    """Regla de inclusion: proyectos GD con almacenamiento.
+    """Regla de inclusion: proyectos de escala de red (GD o AG) con almacenamiento.
 
-    Se ancla en GD y no en "cualquier cosa que no sea AGPE pequeno" porque el
-    codigo 21489 es AGPE 0.1-1MVA con 5 kWh y 10 kW AC a nombre de una persona:
-    no es un proyecto.
+    "GD" y "AG " (con el espacio final) son ambos de escala de red/planta, a
+    diferencia de "AGPE" (autogeneracion a pequena escala, tipicamente techo
+    residencial o comercial). El espacio en "AG " es deliberado: sin el,
+    `str.startswith("AG")` tambien haria match con "AGPE", justo la clase que
+    se debe excluir.
+
+    No se ancla en "cualquier cosa que no sea AGPE pequeno" porque el codigo
+    21489 es AGPE 0.1-1MVA con 5 kWh y 10 kW AC a nombre de una persona: no es
+    un proyecto.
     """
-    return fila.get("al") is True and str(fila.get("tg", "")).startswith("GD")
+    tg = str(fila.get("tg", ""))
+    return fila.get("al") is True and (tg.startswith("GD") or tg.startswith("AG "))
 
 
 def _valida_guardas(filas: list[dict], informe: dict, estados_conocidos: set[str],
@@ -83,17 +100,14 @@ def _valida_guardas(filas: list[dict], informe: dict, estados_conocidos: set[str
     # eso deja pasar deriva 0.0, coordenadas y estados intactos, y el conteo
     # sigue en pie porque no se perdio nada. Sin esta guarda el build
     # "exitoso" simplemente reescribe el archivo sin ningun dato nuevo.
-    if total_actuales:
-        frac_sin_contraparte = len(informe["sin_contraparte"]) / total_actuales
-        if frac_sin_contraparte > UMBRAL_SIN_CONTRAPARTE:
-            pct = frac_sin_contraparte * 100
-            raise MergeError(
-                f"guarda de sin contraparte: {len(informe['sin_contraparte'])} de "
-                f"{total_actuales} registros actuales ({pct:.1f}%) no aparecieron en "
-                f"el snapshot de air-e, sobre un umbral de "
-                f"{UMBRAL_SIN_CONTRAPARTE * 100:.0f}%. Sugiere un pull fallido o "
-                "incompleto; revisar la extraccion antes de reintentar."
-            )
+    n_sin_contraparte = len(informe["sin_contraparte"])
+    if n_sin_contraparte > TOPE_SIN_CONTRAPARTE:
+        raise MergeError(
+            f"guarda de sin contraparte: {n_sin_contraparte} de {total_actuales} "
+            f"registros actuales no aparecieron en el snapshot de air-e, sobre "
+            f"un tope de {TOPE_SIN_CONTRAPARTE}. Sugiere un pull fallido o "
+            "incompleto; revisar la extraccion antes de reintentar."
+        )
 
     # Esta guarda va antes que la de deriva a proposito: un estado desconocido
     # ES la causa de la deriva (un registro que migra a un estado que la UI no
@@ -117,11 +131,27 @@ def _valida_guardas(filas: list[dict], informe: dict, estados_conocidos: set[str
             "real es gradual, asi que esto sugiere un pull defectuoso."
         )
 
-    sin_coords = [f["c"] for f in filas if f.get("la") is None or f.get("lo") is None]
-    if sin_coords:
+    # Caja del Caribe en vez de un simple "no es None": esa version no atrapa
+    # el centinela `0.0` (un `LATITUD: 0` es un punto valido para `is None`, y
+    # pondria un pin en el Golfo de Guinea sin que ninguna guarda se diera
+    # cuenta). El registro 11142 del universo air-e declara `LATITUD: 1.10311`
+    # para "PUERTO COLOMBIA" -en el Amazonas, no el Caribe- y esta guarda es
+    # lo que lo atraparia si algun dia entrara a la salida.
+    fuera_de_rango = [
+        (f["c"], f.get("la"), f.get("lo"))
+        for f in filas
+        if f.get("la") is None
+        or f.get("lo") is None
+        or not (LAT_MIN <= f["la"] <= LAT_MAX)
+        or not (LON_MIN <= f["lo"] <= LON_MAX)
+    ]
+    if fuera_de_rango:
+        detalle = ", ".join(f"{c} ({la}, {lo})" for c, la, lo in fuera_de_rango[:5])
         raise MergeError(
-            f"guarda de coordenadas: {len(sin_coords)} registros quedaron sin "
-            f"latitud o longitud, por ejemplo {sin_coords[:5]}."
+            f"guarda de coordenadas: {len(fuera_de_rango)} registros quedaron "
+            f"con latitud/longitud fuera del Caribe colombiano "
+            f"(lat {LAT_MIN}-{LAT_MAX}, lon {LON_MIN}-{LON_MAX}), por ejemplo: "
+            f"{detalle}."
         )
 
     sin_depto = sorted({f["ci"] for f in filas if f["ci"] not in municipios_conocidos})
@@ -130,6 +160,18 @@ def _valida_guardas(filas: list[dict], informe: dict, estados_conocidos: set[str
             f"guarda de municipios: {sin_depto} no estan en DEPT_MAP y "
             "apareceria 'Sin clasificar' en Analisis. Agregarlos a DEPT_MAP."
         )
+
+
+def _ultimos_12_meses(hoy: date) -> list[str]:
+    """Los 12 meses `YYYY-MM` que terminan en el mes de `hoy`, en orden."""
+    meses = []
+    anio, mes = hoy.year, hoy.month
+    for _ in range(12):
+        meses.append(f"{anio:04d}-{mes:02d}")
+        mes -= 1
+        if mes == 0:
+            mes, anio = 12, anio - 1
+    return list(reversed(meses))
 
 
 def fusionar(
@@ -227,8 +269,20 @@ def fusionar(
     # deriva real entre los que si se compararon (F4).
     comparados = len(actuales) - len(sin_contraparte)
 
+    # Entregable del spec: un reporte del universo air-e que no queda
+    # incorporado a esta salida, por tipo/estado/mes. `salida` ya tiene el
+    # codigo de cada actual (fusionado o huerfano) mas las altas nuevas, asi
+    # que todo lo del snapshot que no aparezca ahi es "no incorporado":
+    # incluye a `candidatos_excluidos` y al resto del universo no curado
+    # (~9.000 registros). Se resume en agregados, nunca en detalle por fila.
+    codigos_incorporados = {f["c"] for f in salida}
+    no_incorporados = [f for f in snapshot if f["c"] not in codigos_incorporados]
+    hoy = date.today()
+    meses_recientes = _ultimos_12_meses(hoy)
+    conteo_por_mes = Counter(f["f"][:7] for f in no_incorporados)
+
     informe = {
-        "fecha": date.today().isoformat(),
+        "fecha": hoy.isoformat(),
         "cambios": cambios,
         "altas": altas,
         "sin_contraparte": sin_contraparte,
@@ -240,6 +294,22 @@ def fusionar(
         "total": len(salida),
         "universo_aire": len(snapshot),
         "con_almacenamiento_aire": sum(1 for f in snapshot if f.get("al") is True),
+        "no_incorporado_total": len(no_incorporados),
+        "no_incorporado_por_tg": dict(
+            sorted(
+                Counter(f["tg"] for f in no_incorporados).items(),
+                key=lambda kv: (-kv[1], kv[0]),
+            )
+        ),
+        "no_incorporado_por_es": dict(
+            sorted(
+                Counter(f["es"] for f in no_incorporados).items(),
+                key=lambda kv: (-kv[1], kv[0]),
+            )
+        ),
+        "no_incorporado_por_mes": {
+            mes: conteo_por_mes.get(mes, 0) for mes in meses_recientes
+        },
     }
 
     _valida_guardas(
@@ -282,7 +352,7 @@ def render_reporte(informe: dict) -> str:
         lineas.append("Ninguno. La BD ya coincide con air-e.")
     lineas.append("")
 
-    lineas += ["## Registros sin contraparte en air-e", ""]
+    lineas += ["## Registros de la BD que air-e ya no devuelve", ""]
     if informe["sin_contraparte"]:
         lineas.append(
             "Se conservaron sin cambios. **Revisar**: con la ventana semiabierta "
@@ -292,6 +362,12 @@ def render_reporte(informe: dict) -> str:
         lineas.append(", ".join(f"`{c}`" for c in informe["sin_contraparte"]))
     else:
         lineas.append("Ninguno.")
+    lineas.append("")
+    lineas.append(
+        "Nota: los 5 codigos del sheet sin contraparte en air-e (`C139`, "
+        "`C153`, `C159`, `20707`, `20715`) no aparecen en esta seccion porque "
+        "este pipeline no lee el sheet; estan documentados en el spec."
+    )
     lineas.append("")
 
     lineas += ["## Candidatos excluidos por la regla de altas", ""]
@@ -324,6 +400,30 @@ def render_reporte(informe: dict) -> str:
         lineas.append(", ".join(f"`{c}`" for c in informe["almacenamiento_incoherente"]))
     else:
         lineas.append("Ninguno.")
+    lineas.append("")
+
+    lineas += ["## Universo air-e no incorporado", ""]
+    lineas.append(
+        f"Registros del universo air-e que no forman parte de esta salida "
+        f"(ni actuales, ni altas): **{informe['no_incorporado_total']}**. Incluye "
+        "a los candidatos excluidos de arriba y al resto del universo no "
+        "curado. Se resume en agregados; nunca en un listado fila por fila."
+    )
+    lineas.append("")
+    lineas += ["### Por tipo de generación", "", "| Tipo | Registros |", "|---|---|"]
+    for tg, n in informe["no_incorporado_por_tg"].items():
+        lineas.append(f"| {tg} | {n} |")
+    lineas.append("")
+    lineas += ["### Por estado", "", "| Estado | Registros |", "|---|---|"]
+    for es, n in informe["no_incorporado_por_es"].items():
+        lineas.append(f"| {es} | {n} |")
+    lineas.append("")
+    lineas += [
+        "### Por mes de solicitud (últimos 12 meses)", "",
+        "| Mes | Registros |", "|---|---|",
+    ]
+    for mes, n in informe["no_incorporado_por_mes"].items():
+        lineas.append(f"| {mes} | {n} |")
     lineas.append("")
 
     return "\n".join(lineas)

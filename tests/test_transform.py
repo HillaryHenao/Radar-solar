@@ -1,6 +1,7 @@
 import pytest
 
 from scripts.transform import (
+    SNAPSHOT_FIELDS,
     norm_text,
     parse_almacenamiento,
     parse_fecha,
@@ -65,13 +66,17 @@ def test_parse_almacenamiento(crudo, esperado):
 
 
 def test_to_row_mapea_el_registro_completo():
+    # DESC_CIUDAD_PRO y DESC_CORREGIMIENTO_PRO usan valores distintos a
+    # proposito: si un refactor transpusiera "ci" y "co" (frecuentemente
+    # iguales en datos reales), un fixture con los mismos valores no lo
+    # detectaria.
     rec = {
         "CONSECUTIVO": 23433,
         "FEC_CREA": "/Date(1744145640000)/",
         "DESC_ESTADO": "  Estudio solicitud ",
         "NOMBRE_CLI": "We-262 ",
         "DESC_CIUDAD_PRO": "ARACATACA",
-        "DESC_CORREGIMIENTO_PRO": "ARACATACA",
+        "DESC_CORREGIMIENTO_PRO": "SEVILLA",
         "DESC_VEREDA_PRO": "ARACATACA  RURAL",
         "TECNO_UTILIZADA_DESC": "Solar FV",
         "TIPO": "GD menor igual 0.1MVA",
@@ -83,13 +88,20 @@ def test_to_row_mapea_el_registro_completo():
     }
     row = to_row(rec)
     assert row["c"] == "23433"
+    assert row["f"] == "2025-04-08 15:54"
     assert row["es"] == "Estudio solicitud"
     assert row["cl"] == "We-262"
+    assert row["ci"] == "ARACATACA"
+    assert row["co"] == "SEVILLA"
     assert row["ve"] == "ARACATACA RURAL"
+    assert row["t"] == "Solar FV"
+    assert row["tg"] == "GD menor igual 0.1MVA"
+    assert row["la"] == 10.58598
     assert row["lo"] == -74.1561
     assert row["al"] is False
     assert row["ak"] == 0
     assert row["pac"] == 100
+    assert set(row) == set(SNAPSHOT_FIELDS)
 
 
 def test_to_row_codigo_es_string():

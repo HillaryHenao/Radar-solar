@@ -17,13 +17,34 @@ import sys
 from datetime import date
 from pathlib import Path
 
-from scripts.inject import escribir_atomico, leer_data, leer_html, reemplazar_data
+from scripts.inject import (
+    InjectError,
+    actualizar_fecha_footer,
+    escribir_atomico,
+    leer_data,
+    leer_html,
+    reemplazar_data,
+)
 from scripts.merge import MergeError, fusionar, render_reporte
 
 RAIZ = Path(__file__).resolve().parent.parent
 
 _ESTADO_ORDER = re.compile(r"const ESTADO_ORDER\s*=\s*(\[.*?\]);", re.DOTALL)
 _DEPT_MAP = re.compile(r"const DEPT_MAP\s*=\s*(\{.*?\});", re.DOTALL)
+
+# Abreviatura de mes en espanol que replica la convencion ya presente en la
+# BD (`sept1`, `sept9`, `sept10`: "sept", no "sep"). El campo `b` no lo lee la
+# UI, asi que el formato es libre; lo unico que importa es no colisionar
+# entre corridas de dias distintos.
+_MESES_ES = {
+    1: "ene", 2: "feb", 3: "mar", 4: "abr", 5: "may", 6: "jun",
+    7: "jul", 8: "ago", 9: "sept", 10: "oct", 11: "nov", 12: "dic",
+}
+
+
+def batch_del_dia(fecha: date) -> str:
+    """Batch de esta corrida, con la misma forma que `sept10`."""
+    return f"{_MESES_ES[fecha.month]}{fecha.day}"
 
 
 def estados_de_ui(html: str) -> set[str]:
@@ -115,6 +136,10 @@ def main(argv: list[str] | None = None) -> int:
             snapshot,
             estados_conocidos=estados_de_ui(html),
             municipios_conocidos=municipios_de_ui(html),
+            # Explicito y derivado de la fecha de esta corrida: el default de
+            # `fusionar` (BATCH_ALTAS) es un fallback fijo que colisionaria
+            # con el batch de esta misma corrida en la siguiente ejecucion.
+            batch=batch_del_dia(hoy),
         )
     except MergeError as exc:
         raise SystemExit(str(exc))
@@ -133,9 +158,18 @@ def main(argv: list[str] | None = None) -> int:
             f"esperaban {len(filas)}. No se escribio nada."
         )
 
-    escribir_atomico(args.index, salida)
+    try:
+        salida = actualizar_fecha_footer(salida, hoy.isoformat())
+    except InjectError as exc:
+        raise SystemExit(str(exc))
+
+    # El reporte se escribe antes que el index.html: si la escritura del
+    # index fallara a mitad de camino, queda igual un registro en disco de
+    # que la corrida se intento, en vez de dejar produccion cambiada sin
+    # ningun rastro.
     args.reporte.parent.mkdir(parents=True, exist_ok=True)
     args.reporte.write_text(reporte, encoding="utf-8")
+    escribir_atomico(args.index, salida)
     print(
         f"{len(filas)} registros escritos en {args.index}\n"
         f"reporte en {args.reporte}",
