@@ -64,23 +64,27 @@ def test_fetch_window_no_recodifica_latin1():
 def test_fetch_window_detecta_el_html_de_error_de_aspnet():
     html = b"<html><head><title>Runtime Error</title></head><body>Server Error</body></html>"
     calls = []
+    dormido = []
 
     def opener(*a, **k):
         calls.append(1)
         return _FakeResponse(html)
 
     with pytest.raises(AireError) as exc:
-        fetch_window("2025-01-01", "2025-02-01", opener=opener, attempts=3)
+        fetch_window("2025-01-01", "2025-02-01", opener=opener, attempts=3, sleep=lambda s: dormido.append(s))
     assert len(calls) == 3
+    assert dormido == [1, 2]
     assert "2025-01-01" in str(exc.value)
 
 
 def test_fetch_window_reintenta_y_luego_acierta():
     good = json.dumps({"d": [{"CONSECUTIVO": 7}]}).encode("utf-8")
     respuestas = [b"<html>Runtime Error</html>", good]
+    dormido = []
 
     def opener(*a, **k):
         return _FakeResponse(respuestas.pop(0))
 
-    rows = fetch_window("2025-01-01", "2025-02-01", opener=opener, attempts=3)
+    rows = fetch_window("2025-01-01", "2025-02-01", opener=opener, attempts=3, sleep=lambda s: dormido.append(s))
+    assert dormido == [1]
     assert rows == [{"CONSECUTIVO": 7}]
