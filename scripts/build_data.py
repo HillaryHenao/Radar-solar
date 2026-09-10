@@ -18,7 +18,7 @@ from datetime import date
 from pathlib import Path
 
 from scripts.inject import escribir_atomico, leer_data, leer_html, reemplazar_data
-from scripts.merge import fusionar, render_reporte
+from scripts.merge import MergeError, fusionar, render_reporte
 
 RAIZ = Path(__file__).resolve().parent.parent
 
@@ -31,7 +31,14 @@ def estados_de_ui(html: str) -> set[str]:
     coincidencia = _ESTADO_ORDER.search(html)
     if coincidencia is None:
         raise SystemExit("no se encontro ESTADO_ORDER en index.html")
-    return set(json.loads(coincidencia.group(1)))
+    try:
+        return set(json.loads(coincidencia.group(1)))
+    except json.JSONDecodeError as exc:
+        raise SystemExit(
+            f"ESTADO_ORDER en index.html no parsea como JSON: {exc}. "
+            "Revisar que el literal use comillas dobles en claves y valores "
+            "y no tenga coma final."
+        )
 
 
 def municipios_de_ui(html: str) -> set[str]:
@@ -39,7 +46,14 @@ def municipios_de_ui(html: str) -> set[str]:
     coincidencia = _DEPT_MAP.search(html)
     if coincidencia is None:
         raise SystemExit("no se encontro DEPT_MAP en index.html")
-    return set(json.loads(coincidencia.group(1)))
+    try:
+        return set(json.loads(coincidencia.group(1)))
+    except json.JSONDecodeError as exc:
+        raise SystemExit(
+            f"DEPT_MAP en index.html no parsea como JSON: {exc}. "
+            "Revisar que el literal use comillas dobles en claves y valores "
+            "y no tenga coma final."
+        )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -86,15 +100,24 @@ def main(argv: list[str] | None = None) -> int:
             f"no se pudo leer {args.snapshot}: permiso denegado. "
             "Verificar los permisos del archivo."
         )
+    except json.JSONDecodeError as exc:
+        raise SystemExit(
+            f"el snapshot en {args.snapshot} no parsea como JSON: {exc}. "
+            "Puede estar truncado o corrupto; volver a correr "
+            "python -m scripts.fetch_aire y reintentar."
+        )
 
     print(f"actuales: {len(actuales)} | snapshot: {len(snapshot)}", file=sys.stderr)
 
-    filas, informe = fusionar(
-        actuales,
-        snapshot,
-        estados_conocidos=estados_de_ui(html),
-        municipios_conocidos=municipios_de_ui(html),
-    )
+    try:
+        filas, informe = fusionar(
+            actuales,
+            snapshot,
+            estados_conocidos=estados_de_ui(html),
+            municipios_conocidos=municipios_de_ui(html),
+        )
+    except MergeError as exc:
+        raise SystemExit(str(exc))
     reporte = render_reporte(informe)
 
     if args.dry_run:
