@@ -71,6 +71,35 @@ def test_agrega_al_y_ak():
     assert filas[0]["ak"] == 250.0
 
 
+def test_al_y_ak_frescos_reemplazan_los_de_una_corrida_anterior():
+    # A partir de la segunda corrida, `actual` ya trae al/ak escritos por una
+    # fusion previa (este pipeline los guarda en index.html). Si el
+    # almacenamiento cambio en air-e -evento normal-, la fusion debe seguir
+    # el valor fresco del snapshot, no quedarse con el viejo.
+    filas, _ = _fusionar(
+        [_actual(al=False, ak=0.0)],
+        [_snap(al=True, ak=250.0)],
+    )
+    assert filas[0]["al"] is True
+    assert filas[0]["ak"] == 250.0
+
+
+def test_huerfano_conserva_su_al_y_ak_si_ya_los_tenia():
+    # Regresion de F8 (round 3): setear al/ak sin condicion en una fila
+    # huerfana borraria en silencio el almacenamiento real de un registro que
+    # cae en sin_contraparte en una segunda corrida. El test de
+    # uniformidad de claves no lo detecta porque su fixture no trae al/ak.
+    actuales = [_actual(c=str(i)) for i in range(100)]
+    actuales[99]["al"] = True
+    actuales[99]["ak"] = 250.0
+    snapshot = [_snap(c=str(i)) for i in range(99)]  # falta "99"
+    filas, informe = _fusionar(actuales, snapshot, total_minimo=1)
+    assert informe["sin_contraparte"] == ["99"]
+    huerfano = next(f for f in filas if f["c"] == "99")
+    assert huerfano["al"] is True
+    assert huerfano["ak"] == 250.0
+
+
 def test_conserva_el_registro_ausente_del_snapshot():
     # Lote de 100 con un solo faltante (1%, justo en el umbral de la guarda
     # de sin contraparte, no por encima) para poder verificar la conservacion

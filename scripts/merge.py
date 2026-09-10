@@ -157,8 +157,13 @@ def fusionar(
             fila_huerfana = dict(actual)
             # Mismo conjunto de claves que una fila fusionada: sin esto, un
             # snapshot parcial deja la salida con dos formas de fila distintas.
-            fila_huerfana["al"] = None
-            fila_huerfana["ak"] = 0.0
+            # setdefault, no asignacion directa: a partir de la segunda
+            # corrida `actual` ya trae al/ak escritos por una fusion previa
+            # (este pipeline los escribe en index.html), y un huerfano sin
+            # contraparte hoy no tiene forma de saber su valor fresco. Pisarlo
+            # con None/0.0 borraria en silencio un almacenamiento real.
+            fila_huerfana.setdefault("al", None)
+            fila_huerfana.setdefault("ak", 0.0)
             salida.append(fila_huerfana)
             continue
 
