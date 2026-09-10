@@ -1,2 +1,4 @@
 .vercel
 .superpowers/
+__pycache__/
+*.pyc
