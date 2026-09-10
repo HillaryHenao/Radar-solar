@@ -96,6 +96,42 @@ def test_escribir_atomico_no_deja_temporales(tmp_path):
     assert list(tmp_path.iterdir()) == [destino]
 
 
+def test_escribir_atomico_respeta_el_newline_explicito(tmp_path):
+    """Regresion: `newline` debe ser un parametro real, no un valor fijo.
+
+    Se verifica en bytes crudos, no en texto: leer de vuelta con
+    `Path.read_text` (modo universal-newlines) normalizaria cualquier salto
+    de linea y no distinguiria un archivo que quedo con CRLF de uno que
+    quedo con LF puro -exactamente el bug que este test existe para atrapar.
+
+    El contenido mezcla un CRLF ya literal (como el que trae index.html) con
+    un LF suelto (como el separador que emite `json.dumps`). Con
+    `newline=""` (el default, para no tocar el CRLF de index.html) ninguno
+    de los dos se toca. Con `newline=None` el `\\n` suelto se traduciria a
+    `os.linesep` y, en Windows, el CRLF ya existente se corromperia a
+    `\\r\\r\\n` porque la traduccion opera sobre cada `\\n` sin mirar si ya
+    venia precedido de `\\r`. Esa diferencia demuestra que el argumento
+    realmente llega a `open()` y no esta fijo en el codigo.
+    """
+    contenido = "linea1\r\nlinea2\n"
+
+    destino_default = tmp_path / "index.html"
+    escribir_atomico(destino_default, contenido)
+    assert destino_default.read_bytes() == b"linea1\r\nlinea2\n"
+
+    destino_explicito = tmp_path / "splice.html"
+    escribir_atomico(destino_explicito, contenido, newline="")
+    assert destino_explicito.read_bytes() == b"linea1\r\nlinea2\n"
+
+    destino_lf = tmp_path / "generado.json"
+    escribir_atomico(destino_lf, "linea1\nlinea2\n", newline="\n")
+    assert destino_lf.read_bytes() == b"linea1\nlinea2\n"
+
+    destino_universal = tmp_path / "universal.txt"
+    escribir_atomico(destino_universal, contenido, newline=None)
+    assert destino_universal.read_bytes() == b"linea1\r\r\nlinea2\r\n"
+
+
 def test_reemplazar_data_preserva_crlf(tmp_path):
     """Regresion: verificar que CRLF se preserve a traves del ciclo completo.
 

@@ -18,7 +18,7 @@ import sys
 from datetime import date, datetime
 from pathlib import Path
 
-from scripts.aire_client import AireError, _next_month, fetch_window, month_windows
+from scripts.aire_client import AireError, fetch_window, month_windows, next_month
 from scripts.inject import InjectError, escribir_atomico
 from scripts.transform import to_row
 
@@ -81,7 +81,7 @@ def main(argv: list[str] | None = None) -> int:
     hoy = date.today()
     parser = argparse.ArgumentParser(description="Descarga el historico de air-e.")
     parser.add_argument("--desde", type=_mes, default=DESDE_POR_DEFECTO)
-    parser.add_argument("--hasta", type=_mes, default=_next_month(hoy))
+    parser.add_argument("--hasta", type=_mes, default=next_month(hoy))
     parser.add_argument(
         "--salida",
         type=Path,
@@ -101,7 +101,14 @@ def main(argv: list[str] | None = None) -> int:
     args.salida.parent.mkdir(parents=True, exist_ok=True)
     try:
         escribir_atomico(
-            args.salida, json.dumps(filas, ensure_ascii=False, indent=0)
+            args.salida,
+            json.dumps(filas, ensure_ascii=False, indent=0),
+            # LF, no el default de index.html: es un archivo generado, no
+            # empalmado, y LF es lo que git ya guarda para el bajo
+            # `core.autocrlf=true` de este repo. Con el default ("") los
+            # separadores del JSON pasarian sin traducir y la proxima corrida
+            # en Windows reescribiria las 170 mil lineas como diff completo.
+            newline="\n",
         )
     except InjectError as exc:
         raise SystemExit(str(exc))

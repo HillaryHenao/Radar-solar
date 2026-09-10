@@ -20,11 +20,15 @@ def _crudo(consecutivo, **extra):
 
 def test_descargar_indexa_por_el_codigo_propio_del_registro(monkeypatch):
     # Guarda #1 del spec: cada registro se indexa por su propio CONSECUTIVO,
-    # nunca por lo que se pidio en la ventana. Es la unica guarda del diseno
-    # sin test: la ventana pide 2025-01, pero el registro que "devuelve"
-    # trae un CONSECUTIVO que no tiene relacion con eso.
+    # nunca por lo que se pidio en la ventana. Una sola ventana devuelve DOS
+    # registros con CONSECUTIVO distinto; si `descargar` indexara por algo
+    # derivado de la solicitud (la ventana pedida, por ejemplo) en vez de
+    # `fila["c"]`, el segundo registro pisaria al primero bajo la misma
+    # clave y solo sobreviviria uno. Que ambos sobrevivan bajo su propio
+    # codigo es justamente lo que este test observa -no el contenido de las
+    # filas, que es tautologico si se lee de si mismo.
     def fake_fetch_window(ini, fin):
-        return [_crudo(999)]
+        return [_crudo(999), _crudo(888)]
 
     monkeypatch.setattr(fetch_aire, "fetch_window", fake_fetch_window)
     monkeypatch.setattr(
@@ -33,7 +37,7 @@ def test_descargar_indexa_por_el_codigo_propio_del_registro(monkeypatch):
     )
 
     filas = fetch_aire.descargar(date(2025, 1, 1), date(2025, 2, 1))
-    assert [f["c"] for f in filas] == ["999"]
+    assert {f["c"] for f in filas} == {"999", "888"}
 
 
 def test_descargar_con_codigo_duplicado_entre_ventanas_conserva_el_ultimo(monkeypatch):

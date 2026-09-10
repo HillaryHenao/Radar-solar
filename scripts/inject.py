@@ -17,8 +17,15 @@ PREFIJO = "const DATA = ["
 
 # Coincide con "Actualizado YYYY-MM-DD" dentro del div `sidebar-foot`, sin
 # depender del resto del markup de ese pie (fuente, separador, etc).
+#
+# `[^<]*?` en vez de `.*?`: ambos son igual de laxos hoy porque el archivo
+# real siempre tiene la fecha justo despues de "Actualizado ". Pero si el
+# footer alguna vez la perdiera, `.*?` con DOTALL no tiene motivo para
+# detenerse en '<' y seguiria buscando el siguiente "Actualizado " a traves
+# de toda la linea de 480 KB de `DATA` antes de fallar. Anclado a
+# "sin '<'" el fallo es inmediato, dentro del propio div.
 _FOOTER_FECHA = re.compile(
-    r'(<div class="sidebar-foot">.*?Actualizado )(\d{4}-\d{2}-\d{2})(.*?</div>)',
+    r'(<div class="sidebar-foot">[^<]*?Actualizado )(\d{4}-\d{2}-\d{2})([^<]*?</div>)',
     re.DOTALL,
 )
 
@@ -95,14 +102,23 @@ def leer_html(origen: Path) -> str:
         return f.read()
 
 
-def escribir_atomico(destino: Path, contenido: str) -> None:
-    """Escribe a un temporal en el mismo directorio y reemplaza de una vez."""
+def escribir_atomico(destino: Path, contenido: str, *, newline: str | None = "") -> None:
+    """Escribe a un temporal en el mismo directorio y reemplaza de una vez.
+
+    `newline` se pasa tal cual a `open()` y por defecto es `""`: ese default
+    existe para preservar el CRLF de index.html, un archivo que este modulo
+    solo empalma (ver `leer_html`) y nunca debe reescribir con los saltos de
+    linea del sistema. Quien escriba un archivo generado (no empalmado) desde
+    cero -como el snapshot de `fetch_aire`- debe elegir `newline` a proposito:
+    `""` aqui haria pasar los `\\n` del JSON sin traducir y, en Windows,
+    dejaria el archivo con avisos de linea mixtos frente a la proxima corrida.
+    """
     destino = Path(destino)
     descriptor, temporal = tempfile.mkstemp(
         dir=str(destino.parent), prefix=destino.name, suffix=".tmp"
     )
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as manejador:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline=newline) as manejador:
             manejador.write(contenido)
         os.replace(temporal, destino)
     except OSError as exc:

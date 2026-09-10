@@ -150,7 +150,17 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     salida = reemplazar_data(html, filas)
-    # Verificacion antes de escribir: si el resultado no parsea, no se toca nada.
+
+    try:
+        salida = actualizar_fecha_footer(salida, hoy.isoformat())
+    except InjectError as exc:
+        raise SystemExit(str(exc))
+
+    # Verificacion antes de escribir: si el resultado no parsea, no se toca
+    # nada. Se hace despues del footer -no antes- para que el round-trip
+    # tambien cubra la edicion del footer: si esta corriera despues de este
+    # chequeo, seria la unica escritura que llega a produccion sin
+    # reverificarse.
     releidas = leer_data(salida)
     if len(releidas) != len(filas):
         raise SystemExit(
@@ -158,18 +168,25 @@ def main(argv: list[str] | None = None) -> int:
             f"esperaban {len(filas)}. No se escribio nada."
         )
 
-    try:
-        salida = actualizar_fecha_footer(salida, hoy.isoformat())
-    except InjectError as exc:
-        raise SystemExit(str(exc))
-
     # El reporte se escribe antes que el index.html: si la escritura del
     # index fallara a mitad de camino, queda igual un registro en disco de
     # que la corrida se intento, en vez de dejar produccion cambiada sin
     # ningun rastro.
     args.reporte.parent.mkdir(parents=True, exist_ok=True)
     args.reporte.write_text(reporte, encoding="utf-8")
-    escribir_atomico(args.index, salida)
+    try:
+        escribir_atomico(args.index, salida)
+    except InjectError as exc:
+        # Si el index nunca se toco, el reporte que ya quedo en disco
+        # afirmaria un cambio que no ocurrio. Se borra en vez de dejarlo
+        # como un huerfano que alguien podria confundir con un build real.
+        args.reporte.unlink(missing_ok=True)
+        raise SystemExit(
+            f"{exc}\n"
+            f"No se escribio {args.index}; se elimino el reporte en "
+            f"{args.reporte} para que no quede describiendo un cambio que "
+            "nunca se aplico."
+        )
     print(
         f"{len(filas)} registros escritos en {args.index}\n"
         f"reporte en {args.reporte}",

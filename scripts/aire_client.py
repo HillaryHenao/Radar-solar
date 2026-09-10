@@ -25,7 +25,7 @@ class AireError(RuntimeError):
     """La respuesta del portal no es utilizable."""
 
 
-def _next_month(d: date) -> date:
+def next_month(d: date) -> date:
     if d.month == 12:
         return date(d.year + 1, 1, 1)
     return date(d.year, d.month + 1, 1)
@@ -42,7 +42,7 @@ def month_windows(start: date, end_exclusive: date) -> list[tuple[str, str]]:
     cursor = date(start.year, start.month, 1)
     limite = date(end_exclusive.year, end_exclusive.month, 1)
     while cursor < limite:
-        siguiente = _next_month(cursor)
+        siguiente = next_month(cursor)
         ventanas.append((cursor.isoformat(), siguiente.isoformat()))
         cursor = siguiente
     return ventanas
