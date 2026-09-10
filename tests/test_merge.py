@@ -44,7 +44,13 @@ def _fusionar(actuales, snapshot, **kw):
 
 
 def test_preserva_los_campos_propios_de_la_bd():
-    filas, _ = _fusionar([_actual()], [_snap()])
+    # Valores hostiles en el snapshot: si algun refactor futuro mezclara con
+    # algo como `{**actual, **fresco}`, esto fallaria. `_snap()` normal no
+    # incluye e/se/p/un/b, asi que no puede detectar esa regresion.
+    filas, _ = _fusionar(
+        [_actual()],
+        [_snap(e="WRONG", se="X", p="Y", un=True, b="sept99")],
+    )
     fila = filas[0]
     assert fila["e"] == "ACME"
     assert fila["se"] == "ECS en proceso"
@@ -66,16 +72,25 @@ def test_agrega_al_y_ak():
 
 
 def test_conserva_el_registro_ausente_del_snapshot():
-    filas, informe = _fusionar([_actual(c="1"), _actual(c="2")], [_snap(c="1")])
-    assert len(filas) == 2
-    assert informe["sin_contraparte"] == ["2"]
-    conservada = next(f for f in filas if f["c"] == "2")
+    # Lote de 100 con un solo faltante (1%, justo en el umbral de la guarda
+    # de sin contraparte, no por encima) para poder verificar la conservacion
+    # sin disparar esa guarda.
+    actuales = [_actual(c=str(i)) for i in range(100)]
+    snapshot = [_snap(c=str(i)) for i in range(99)]  # falta "99"
+    filas, informe = _fusionar(actuales, snapshot, total_minimo=1)
+    assert len(filas) == 100
+    assert informe["sin_contraparte"] == ["99"]
+    conservada = next(f for f in filas if f["c"] == "99")
     assert conservada["cl"] == "Cliente Viejo"
 
 
 def test_nunca_elimina_registros():
-    filas, _ = _fusionar([_actual(c="1"), _actual(c="2")], [])
-    assert {f["c"] for f in filas} == {"1", "2"}
+    # Varios faltantes (2 de 300, bajo el umbral de sin contraparte) para
+    # confirmar que ninguno desaparece de la salida.
+    actuales = [_actual(c=str(i)) for i in range(300)]
+    snapshot = [_snap(c=str(i)) for i in range(298)]  # faltan "298" y "299"
+    filas, _ = _fusionar(actuales, snapshot, total_minimo=1)
+    assert {f["c"] for f in filas} == {str(i) for i in range(300)}
 
 
 def test_es_alta_solo_para_gd_con_almacenamiento():
@@ -101,6 +116,9 @@ def test_incorpora_el_alta_con_sus_campos_propios(monkeypatch):
     assert nueva["b"] == "sept10"
     assert nueva["ak"] == 6517.0
     assert informe["altas"] == ["25857"]
+    # Un alta con una clave de menos o de mas rompe el JS en runtime, no en
+    # build time: hay que fijarlo con un test.
+    assert set(nueva) == set(filas[0])
 
 
 def test_falla_si_un_alta_no_tiene_empresa_asignada():
@@ -116,6 +134,29 @@ def test_reporta_el_candidato_excluido_por_la_regla():
     assert [c["c"] for c in informe["candidatos_excluidos"]] == ["21489"]
 
 
+def test_no_reporta_diferencias_de_punto_flotante_en_coordenadas():
+    # La BD guarda algunas coordenadas sin redondear; el snapshot ya llega
+    # redondeado. round(10.913179999999999, 5) == round(10.91318, 5), asi que
+    # esto no debe aparecer como un cambio, aunque si se escriba el valor
+    # nuevo.
+    filas, informe = _fusionar(
+        [_actual(la=10.913179999999999, lo=-74.5, cl="Cliente Viejo")],
+        [_snap(la=10.91318, lo=-74.5, cl="Cliente Viejo")],
+    )
+    assert filas[0]["la"] == 10.91318
+    assert informe["cambios"] == []
+
+
+def test_si_reporta_un_cambio_real_de_coordenadas():
+    filas, informe = _fusionar(
+        [_actual(la=10.0, lo=-74.0, cl="Cliente Viejo")],
+        [_snap(la=10.5, lo=-74.5, cl="Cliente Viejo")],
+    )
+    assert filas[0]["la"] == 10.5
+    assert filas[0]["lo"] == -74.5
+    assert {"la", "lo"} <= {c["campo"] for c in informe["cambios"]}
+
+
 def test_reporta_almacenamiento_incoherente():
     raro = _snap(c="362", al=True, ak=0.0, tg="AGPE menor igual 0.1MVA")
     _, informe = _fusionar([_actual()], [_snap(), raro])
@@ -127,6 +168,38 @@ def test_reporta_almacenamiento_incoherente():
 def test_guarda_conteo_aborta_si_falta_algun_registro():
     with pytest.raises(MergeError, match="conteo"):
         _fusionar([_actual()], [_snap()], total_minimo=5)
+
+
+def test_guarda_no_eliminacion_es_independiente_del_piso_de_conteo():
+    # Invariante directa ("nunca se elimina un registro"), probada contra
+    # _valida_guardas directamente: por construccion, fusionar() nunca puede
+    # producir menos filas que actuales (cada actual siempre agrega
+    # exactamente una fila), asi que esta guarda es defensiva ante un futuro
+    # refactor, no alcanzable hoy a traves de la API publica de fusionar().
+    # Con DATA creciendo mas alla de TOTAL_MINIMO, el piso estatico ya no
+    # detectaria una perdida de registros; esta invariante si.
+    from scripts.merge import _valida_guardas
+
+    informe = {"sin_contraparte": [], "deriva_estados": 0.0}
+    with pytest.raises(MergeError, match="no eliminacion"):
+        _valida_guardas(
+            filas=[{"c": "1", "es": "Estudio solicitud", "ci": "ARACATACA",
+                    "la": 1.0, "lo": 1.0}],
+            informe=informe,
+            estados_conocidos=ESTADOS,
+            municipios_conocidos=MUNICIPIOS,
+            total_minimo=1,
+            total_actuales=2,
+        )
+
+
+def test_guarda_sin_contraparte_aborta_pull_fallido():
+    # Un pull vacio deja todo en sin_contraparte: deriva 0.0, coordenadas y
+    # estados intactos, conteo sin perdidas. Sin esta guarda el build
+    # "exitoso" reescribiria el archivo sin ningun dato nuevo (F5).
+    actuales = [_actual(c=str(i)) for i in range(100)]
+    with pytest.raises(MergeError, match="sin contraparte"):
+        _fusionar(actuales, [], total_minimo=1)
 
 
 def test_guarda_deriva_aborta_sobre_el_5_por_ciento():
@@ -142,6 +215,22 @@ def test_guarda_deriva_permite_un_movimiento_normal():
     snapshot[0]["es"] = "Pendiente documento"
     filas, informe = _fusionar(actuales, snapshot, total_minimo=1)
     assert informe["deriva_estados"] == pytest.approx(0.01)
+
+
+def test_guarda_deriva_usa_el_denominador_correcto_con_snapshot_parcial():
+    # 1000 actuales, 9 sin contraparte (0.9%, bajo el umbral de la guarda de
+    # sin contraparte) y 50 movimientos entre los 991 que si se compararon.
+    # Con el denominador viejo (len(actuales)): 50/1000 = 5.0%, justo en el
+    # umbral, no dispara. Con el denominador correcto (solo comparados):
+    # 50/991 = 5.05%, si dispara. Ninguno de los dos tests de deriva
+    # existentes distingue esto porque usan cobertura completa, donde ambos
+    # denominadores son numericamente identicos.
+    actuales = [_actual(c=str(i)) for i in range(1000)]
+    snapshot = [_snap(c=str(i)) for i in range(991)]
+    for i in range(50):
+        snapshot[i]["es"] = "Pendiente documento"
+    with pytest.raises(MergeError, match="deriva de estados"):
+        _fusionar(actuales, snapshot, total_minimo=1)
 
 
 def test_guarda_coordenadas_aborta_si_falta_una():
@@ -178,6 +267,30 @@ def test_la_guarda_de_estados_gana_a_la_de_deriva():
 def test_guarda_municipios_aborta_con_ciudad_sin_departamento():
     with pytest.raises(MergeError, match="DEPT_MAP"):
         _fusionar([_actual()], [_snap(ci="EL PI¿ON")])
+
+
+def test_todas_las_filas_de_salida_tienen_el_mismo_conjunto_de_claves():
+    # Con un snapshot parcial, las filas huerfanas (sin contraparte) deben
+    # tener las mismas claves que las fusionadas -incluyendo al/ak- o la
+    # salida mezcla dos formas de fila distintas (F8).
+    actuales = [_actual(c=str(i)) for i in range(100)]
+    snapshot = [_snap(c=str(i)) for i in range(99)]  # falta "99"
+    filas, _ = _fusionar(actuales, snapshot, total_minimo=1)
+    claves = {frozenset(f.keys()) for f in filas}
+    assert len(claves) == 1
+    huerfana = next(f for f in filas if f["c"] == "99")
+    assert huerfana["al"] is None
+    assert huerfana["ak"] == 0.0
+
+
+def test_campos_de_aire_y_campos_propios_son_disjuntos():
+    # Redundante con el assert a nivel de modulo en scripts/merge.py, pero
+    # documenta la invariante: si un futuro edit agrega "e" a CAMPOS_DE_AIRE,
+    # se borrarian en silencio 1,586 empresas sin este test (ni el assert de
+    # import) fallando de forma visible en la suite.
+    from scripts.merge import CAMPOS_DE_AIRE, CAMPOS_PROPIOS
+
+    assert not set(CAMPOS_DE_AIRE) & set(CAMPOS_PROPIOS)
 
 
 def test_render_reporte_declara_los_bloques():

@@ -13,6 +13,26 @@ CAMPOS_DE_AIRE = ("f", "es", "cl", "ci", "co", "ve", "t", "tg", "la", "lo")
 # Campos que solo existen en la BD y nunca se recalculan.
 CAMPOS_PROPIOS = ("e", "se", "p", "un", "b")
 
+# Si algun dia se agrega un campo a ambas listas, se sobrescribiria un campo
+# propio de la BD con lo que mande air-e (el mismo desastre que revirtio
+# a2cabc2). Que esto falle en el momento del edit, no en produccion.
+assert not set(CAMPOS_DE_AIRE) & set(CAMPOS_PROPIOS), (
+    "CAMPOS_DE_AIRE y CAMPOS_PROPIOS se solapan: un campo compartido se "
+    "sobrescribiria con air-e y dejaria de ser propio de la BD."
+)
+
+# Precision de comparacion para coordenadas: la BD guarda algunas sin
+# redondear (10.913179999999999) y el snapshot ya llega redondeado
+# (10.91318); esa diferencia de ~1.8e-15 es ruido de punto flotante, no un
+# cambio real. Se escribe igual el valor del snapshot; solo se deja de
+# reportar como "cambio" en el informe.
+DECIMALES_COORDENADAS = 5
+
+# Umbral de registros actuales que pueden quedar sin contraparte en el
+# snapshot antes de sospechar un pull fallido o incompleto (F5). En datos
+# reales este valor es 0.
+UMBRAL_SIN_CONTRAPARTE = 0.01
+
 # Empresa de cada alta. Se asigna a mano: son pocas, `e` alimenta el filtro y
 # los rankings, y una heuristica sobre NOMBRE_CLI produciria basura.
 EMPRESAS_ALTAS: dict[str, str] = {
@@ -41,12 +61,39 @@ def es_alta(fila: dict) -> bool:
 
 
 def _valida_guardas(filas: list[dict], informe: dict, estados_conocidos: set[str],
-                    municipios_conocidos: set[str], total_minimo: int) -> None:
+                    municipios_conocidos: set[str], total_minimo: int,
+                    total_actuales: int) -> None:
     if len(filas) < total_minimo:
         raise MergeError(
             f"guarda de conteo: quedaron {len(filas)} registros y se esperaban "
             f"al menos {total_minimo}. Revisar el snapshot antes de reintentar."
         )
+
+    # Invariante directa e independiente del piso estatico de arriba: ningun
+    # registro se elimina en la fusion, sin importar cuanto crezca DATA con
+    # el tiempo (el piso de TOTAL_MINIMO se queda corto si DATA supera 1589).
+    if len(filas) < total_actuales:
+        raise MergeError(
+            f"guarda de no eliminacion: quedaron {len(filas)} registros mezclados "
+            f"pero habia {total_actuales} actuales; se perdieron "
+            f"{total_actuales - len(filas)}. Ningun registro se elimina en la fusion."
+        )
+
+    # Un pull vacio o truncado hace que todo actual quede "sin_contraparte":
+    # eso deja pasar deriva 0.0, coordenadas y estados intactos, y el conteo
+    # sigue en pie porque no se perdio nada. Sin esta guarda el build
+    # "exitoso" simplemente reescribe el archivo sin ningun dato nuevo.
+    if total_actuales:
+        frac_sin_contraparte = len(informe["sin_contraparte"]) / total_actuales
+        if frac_sin_contraparte > UMBRAL_SIN_CONTRAPARTE:
+            pct = frac_sin_contraparte * 100
+            raise MergeError(
+                f"guarda de sin contraparte: {len(informe['sin_contraparte'])} de "
+                f"{total_actuales} registros actuales ({pct:.1f}%) no aparecieron en "
+                f"el snapshot de air-e, sobre un umbral de "
+                f"{UMBRAL_SIN_CONTRAPARTE * 100:.0f}%. Sugiere un pull fallido o "
+                "incompleto; revisar la extraccion antes de reintentar."
+            )
 
     # Esta guarda va antes que la de deriva a proposito: un estado desconocido
     # ES la causa de la deriva (un registro que migra a un estado que la UI no
@@ -107,13 +154,31 @@ def fusionar(
         fresco = por_codigo.get(actual["c"])
         if fresco is None:
             sin_contraparte.append(actual["c"])
-            salida.append(dict(actual))
+            fila_huerfana = dict(actual)
+            # Mismo conjunto de claves que una fila fusionada: sin esto, un
+            # snapshot parcial deja la salida con dos formas de fila distintas.
+            fila_huerfana["al"] = None
+            fila_huerfana["ak"] = 0.0
+            salida.append(fila_huerfana)
             continue
 
         fila = dict(actual)
         for campo in CAMPOS_DE_AIRE:
             antes, despues = actual.get(campo), fresco[campo]
-            if antes != despues:
+            if (
+                campo in ("la", "lo")
+                and isinstance(antes, (int, float))
+                and isinstance(despues, (int, float))
+            ):
+                # Ruido de punto flotante entre BD sin redondear y snapshot ya
+                # redondeado: se escribe `despues` igual, pero no cuenta como
+                # cambio real si coinciden a DECIMALES_COORDENADAS.
+                hay_cambio = round(antes, DECIMALES_COORDENADAS) != round(
+                    despues, DECIMALES_COORDENADAS
+                )
+            else:
+                hay_cambio = antes != despues
+            if hay_cambio:
                 cambios.append(
                     {"c": actual["c"], "campo": campo, "antes": antes, "despues": despues}
                 )
@@ -151,12 +216,18 @@ def fusionar(
                  "ci": fila["ci"], "cl": fila["cl"], "pac": fila["pac"]}
             )
 
+    # El denominador correcto es la poblacion comparada (actuales con
+    # contraparte en el snapshot), no todos los actuales: si air-e devuelve
+    # solo una fraccion de los registros, dividir por el total diluye la
+    # deriva real entre los que si se compararon (F4).
+    comparados = len(actuales) - len(sin_contraparte)
+
     informe = {
         "fecha": date.today().isoformat(),
         "cambios": cambios,
         "altas": altas,
         "sin_contraparte": sin_contraparte,
-        "deriva_estados": (estados_movidos / len(actuales)) if actuales else 0.0,
+        "deriva_estados": (estados_movidos / comparados) if comparados else 0.0,
         "candidatos_excluidos": candidatos_excluidos,
         "almacenamiento_incoherente": [
             f["c"] for f in snapshot if f.get("al") is True and f.get("ak") == 0
@@ -166,7 +237,10 @@ def fusionar(
         "con_almacenamiento_aire": sum(1 for f in snapshot if f.get("al") is True),
     }
 
-    _valida_guardas(salida, informe, estados_conocidos, municipios_conocidos, total_minimo)
+    _valida_guardas(
+        salida, informe, estados_conocidos, municipios_conocidos, total_minimo,
+        len(actuales),
+    )
     return salida, informe
 
 
