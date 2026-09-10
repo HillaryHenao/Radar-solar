@@ -116,3 +116,68 @@ def test_render_almacenamiento_tiene_estado_vacio(html):
     inicio = html.index("function renderAlmacenamiento")
     cuerpo = html[inicio : inicio + 2200]
     assert "alm-empty" in cuerpo
+
+
+# ---------- clic en fila ya no navega al mapa; copiar codigo + boton de mapa ----------
+
+def test_existe_el_helper_compartido_wire_row_actions(html):
+    assert "function wireRowActions(tbody)" in html
+
+
+def test_wire_row_actions_copia_el_codigo_crudo_al_portapapeles(html):
+    inicio = html.index("function wireRowActions(tbody)")
+    cuerpo = html[inicio : html.index("function openRankDetail(title, scopeLabel, rows){")]
+    # El portapapeles recibe el codigo crudo (sin '#'), no el texto visible de la celda.
+    assert "navigator.clipboard.writeText(code)" in cuerpo
+    # La promesa puede rechazar (permisos, foco); debe manejarse, no fallar en silencio.
+    assert ".catch(" in cuerpo
+    assert "selectCellText" in cuerpo
+    assert "td.code" in cuerpo
+    assert ".map-btn" in cuerpo
+
+
+def test_open_rank_detail_ya_no_navega_al_mapa_desde_la_fila(html):
+    inicio = html.index("function openRankDetail(title, scopeLabel, rows){")
+    cuerpo = html[inicio : html.index("function closeRankDetail()")]
+    assert "setView('map')" not in cuerpo
+    assert "wireRowActions(body)" in cuerpo
+    assert 'class="map-btn"' in cuerpo
+
+
+def test_render_analysis_ya_no_navega_al_mapa_desde_la_fila(html):
+    inicio = html.index("function renderAnalysis(){")
+    cuerpo = html[inicio : html.index("function renderAlmacenamiento(){")]
+    assert "setView('map')" not in cuerpo
+    assert "wireRowActions(body)" in cuerpo
+    assert 'class="map-btn"' in cuerpo
+
+
+def test_render_almacenamiento_ya_no_navega_al_mapa_desde_la_fila(html):
+    inicio = html.index("function renderAlmacenamiento(){")
+    cuerpo = html[inicio : html.index("function renderTable(){")]
+    assert "setView('map')" not in cuerpo
+    assert "wireRowActions(body)" in cuerpo
+    assert 'class="map-btn"' in cuerpo
+
+
+def test_render_table_ya_no_navega_al_mapa_desde_la_fila(html):
+    inicio = html.index("function renderTable(){")
+    cuerpo = html[inicio : html.index("function updateSortArrows(){")]
+    assert "setView('map')" not in cuerpo
+    assert "wireRowActions(body)" in cuerpo
+    assert 'class="map-btn"' in cuerpo
+
+
+def test_el_boton_de_mapa_tiene_titulo_y_aria_label_en_espanol(html):
+    marcado = 'title="Ver esta solicitud en el mapa" aria-label="Ver esta solicitud en el mapa"'
+    # Una vez por cada una de las 4 tablas (ranking, cambios de estado,
+    # almacenamiento y tabla principal).
+    assert html.count(marcado) == 4
+
+
+def test_render_list_del_sidebar_sigue_navegando_al_seleccionar(html):
+    # renderList (la lista de resultados del sidebar) queda fuera de este
+    # cambio: seleccionar un resultado en la lista sigue llevando al mapa.
+    inicio = html.index("function renderList(filtered){")
+    cuerpo = html[inicio : html.index("function buildEstadoChips(){")]
+    assert "selectPoint(d)" in cuerpo

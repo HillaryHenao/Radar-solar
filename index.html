@@ -178,6 +178,22 @@ input:focus-visible, select:focus-visible, button:focus-visible, .chip:focus-vis
 .insight-count{ flex:0 0 26px; text-align:right; font-family:'IBM Plex Mono',monospace; color:var(--text-muted); font-size:.72rem; }
 .insight-empty{ font-size:.76rem; color:var(--text-muted); }
 
+td.code{ cursor:pointer; }
+td.code:hover{ text-decoration:underline dotted; text-underline-offset:2px; }
+td.code.copied{ position:relative; }
+td.code.copied::after{
+  content:attr(data-tip); position:absolute; left:0; top:100%; margin-top:3px;
+  background:var(--accent); color:var(--accent-ink); font-size:.66rem; font-weight:700;
+  padding:2px 6px; border-radius:5px; white-space:nowrap; z-index:30; pointer-events:none;
+  box-shadow:var(--shadow);
+}
+.map-btn{
+  font:inherit; font-size:.7rem; font-weight:700; padding:3px 8px; border-radius:6px;
+  border:1px solid var(--border); background:var(--surface); color:var(--accent); cursor:pointer; white-space:nowrap;
+}
+.map-btn:hover{ background:var(--accent); color:var(--accent-ink); border-color:transparent; }
+th.map-col, td.map-col{ width:1%; white-space:nowrap; text-align:center; }
+
 .table-scroll{ flex:1; overflow:auto; }
 #dataTable{ width:100%; table-layout:fixed; border-collapse:collapse; font-size:.82rem; }
 #dataTable thead tr.sort-row th{
@@ -187,6 +203,8 @@ input:focus-visible, select:focus-visible, button:focus-visible, .chip:focus-vis
   border-bottom:1px solid var(--border); user-select:none;
 }
 #dataTable thead tr.sort-row th:hover{ color:var(--text); }
+#dataTable thead tr.sort-row th.map-col{ cursor:default; }
+#dataTable thead tr.sort-row th.map-col:hover{ color:var(--text-muted); }
 #dataTable thead tr.sort-row th .arrow{ opacity:.5; margin-left:3px; }
 #dataTable thead tr.filter-row th{
   position:sticky; top:34px; background:var(--surface); padding:5px 8px; border-bottom:1px solid var(--border); font-weight:400;
@@ -196,7 +214,7 @@ input:focus-visible, select:focus-visible, button:focus-visible, .chip:focus-vis
   border:1px solid var(--border); background:var(--bg); color:var(--text);
 }
 #dataTable td{ padding:7px 10px; border-bottom:1px solid var(--border); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-#dataTable tbody tr:hover{ background:var(--surface-2); cursor:pointer; }
+#dataTable tbody tr:hover{ background:var(--surface-2); }
 #dataTable td.code{ font-family:'IBM Plex Mono',monospace; font-weight:600; }
 #dataTable td.mono{ font-family:'IBM Plex Mono',monospace; font-size:.78rem; color:var(--text-muted); }
 #dataTable .st-dot{ display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; }
@@ -350,7 +368,8 @@ input:focus-visible, select:focus-visible, button:focus-visible, .chip:focus-vis
               <col style="width:12%">
               <col style="width:15%">
               <col style="width:16%">
-              <col style="width:15%">
+              <col style="width:9%">
+              <col style="width:6%">
             </colgroup>
             <thead>
               <tr class="sort-row">
@@ -361,6 +380,7 @@ input:focus-visible, select:focus-visible, button:focus-visible, .chip:focus-vis
                 <th data-key="es">Estado air-e</th>
                 <th data-key="se">Estado Sheet</th>
                 <th data-key="f">Fecha solicitud</th>
+                <th class="map-col">Mapa</th>
               </tr>
               <tr class="filter-row">
                 <th><input type="text" data-col="c" placeholder="Filtrar…"></th>
@@ -370,6 +390,7 @@ input:focus-visible, select:focus-visible, button:focus-visible, .chip:focus-vis
                 <th><input type="text" data-col="es" placeholder="Filtrar…"></th>
                 <th><input type="text" data-col="se" placeholder="Filtrar…"></th>
                 <th><input type="text" data-col="f" placeholder="Filtrar…"></th>
+                <th class="map-col"></th>
               </tr>
             </thead>
             <tbody id="tableBody"></tbody>
@@ -398,7 +419,7 @@ input:focus-visible, select:focus-visible, button:focus-visible, .chip:focus-vis
     <div class="table-scroll rank-modal-scroll">
       <table class="changes-table">
         <thead>
-          <tr><th>Código</th><th>Municipio</th><th>Departamento</th><th>Estado air-e</th><th>Fecha solicitud</th></tr>
+          <tr><th>Código</th><th>Municipio</th><th>Departamento</th><th>Estado air-e</th><th>Fecha solicitud</th><th class="map-col">Mapa</th></tr>
         </thead>
         <tbody id="rankModalBody"></tbody>
       </table>
@@ -553,6 +574,53 @@ function rankBy(rows, keyFn){
   });
   return Array.from(counts.entries()).sort((a,b)=>b[1]-a[1]);
 }
+function selectCellText(el){
+  try{
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }catch(err){ /* selección no disponible, se ignora */ }
+}
+function showCodeFeedback(td, text){
+  td.classList.add('copied');
+  td.setAttribute('data-tip', text);
+  clearTimeout(td._copyFeedbackTimer);
+  td._copyFeedbackTimer = setTimeout(()=>{
+    td.classList.remove('copied');
+    td.removeAttribute('data-tip');
+  }, 1500);
+}
+// Conecta un <tbody> ya renderizado: clic en la celda .code copia el código
+// al portapapeles (con feedback visual), y clic en el botón .map-btn de cada
+// fila es la única forma de saltar al mapa. Usado por las 4 tablas de
+// solicitudes (ranking, análisis, almacenamiento y tabla principal).
+function wireRowActions(tbody){
+  tbody.querySelectorAll('td.code').forEach(td=>{
+    td.title = 'Clic para copiar el código';
+    td.addEventListener('click', ()=>{
+      const code = td.closest('tr')?.dataset.code;
+      if(!code) return;
+      navigator.clipboard.writeText(code).then(()=>{
+        showCodeFeedback(td, 'Copiado');
+      }).catch(()=>{
+        selectCellText(td);
+        showCodeFeedback(td, 'Selecciona y copia (Ctrl+C)');
+      });
+    });
+  });
+  tbody.querySelectorAll('.map-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const code = btn.closest('tr')?.dataset.code;
+      const d = DATA.find(x=>x.c===code);
+      if(!d) return;
+      closeRankDetail();
+      setView('map');
+      selectPoint(d);
+    });
+  });
+}
 function openRankDetail(title, scopeLabel, rows){
   document.getElementById('rankModalTitle').textContent = title;
   document.getElementById('rankModalSubtitle').textContent =
@@ -566,17 +634,10 @@ function openRankDetail(title, scopeLabel, rows){
       '<td>'+(DEPT_MAP[d.ci]||'Sin clasificar')+'</td>'+
       '<td><span class="st-dot" style="background:'+estadoColor(d.es)+'"></span>'+d.es+'</td>'+
       '<td class="mono">'+(d.f||'—')+'</td>'+
+      '<td class="map-col"><button type="button" class="map-btn" title="Ver esta solicitud en el mapa" aria-label="Ver esta solicitud en el mapa">Mapa</button></td>'+
     '</tr>'
   ).join('');
-  body.querySelectorAll('tr').forEach(tr=>{
-    tr.addEventListener('click', ()=>{
-      const d = DATA.find(x=>x.c===tr.dataset.code);
-      if(!d) return;
-      closeRankDetail();
-      setView('map');
-      selectPoint(d);
-    });
-  });
+  wireRowActions(body);
   document.getElementById('rankModalBackdrop').hidden = false;
 }
 function closeRankDetail(){ document.getElementById('rankModalBackdrop').hidden = true; }
@@ -636,7 +697,7 @@ function buildAnalysisSkeleton(){
       '<p class="section-note changes-note">Detectado al revisar la hoja Sept 9 contra el estado registrado el 1 de septiembre.</p>'+
       '<div class="table-scroll changes-scroll">'+
         '<table class="changes-table">'+
-          '<thead><tr><th>Código</th><th>Empresa</th><th>Cliente</th><th>Municipio</th><th>Departamento</th><th>Fecha solicitud</th><th>Cambio de estado</th></tr></thead>'+
+          '<thead><tr><th>Código</th><th>Empresa</th><th>Cliente</th><th>Municipio</th><th>Departamento</th><th>Fecha solicitud</th><th>Cambio de estado</th><th class="map-col">Mapa</th></tr></thead>'+
           '<tbody id="chgbody-global"></tbody>'+
         '</table>'+
       '</div>'+
@@ -654,7 +715,7 @@ function buildAnalysisSkeleton(){
           '<thead><tr>'+
             '<th>Código</th><th>Empresa</th><th>Cliente</th><th>Municipio</th>'+
             '<th>Tipo de generación</th><th>Estado air-e</th><th>Estado Sheet</th>'+
-            '<th>Fecha solicitud</th><th class="kwh">Capacidad (kWh)</th>'+
+            '<th>Fecha solicitud</th><th class="kwh">Capacidad (kWh)</th><th class="map-col">Mapa</th>'+
           '</tr></thead>'+
           '<tbody id="almbody"></tbody>'+
         '</table>'+
@@ -745,16 +806,10 @@ function renderAnalysis(){
       '<td>'+(DEPT_MAP[c.ci]||'Sin clasificar')+'</td>'+
       '<td class="mono">'+(byCode.get(c.c).f||'—')+'</td>'+
       '<td><span class="change-arrow"><span class="change-from">'+c.from+'</span> → <span class="change-to">'+c.to+'</span></span></td>'+
+      '<td class="map-col"><button type="button" class="map-btn" title="Ver esta solicitud en el mapa" aria-label="Ver esta solicitud en el mapa">Mapa</button></td>'+
     '</tr>'
   ).join('');
-  body.querySelectorAll('tr').forEach(tr=>{
-    tr.addEventListener('click', ()=>{
-      const d = DATA.find(x=>x.c===tr.dataset.code);
-      if(!d) return;
-      setView('map');
-      selectPoint(d);
-    });
-  });
+  wireRowActions(body);
 }
 function renderAlmacenamiento(){
   const rows = getFiltered().filter(d=>d.al===true).sort((a,b)=>Number(b.ak||0)-Number(a.ak||0));
@@ -784,16 +839,10 @@ function renderAlmacenamiento(){
       '<td>'+(d.se || '—')+'</td>'+
       '<td class="mono">'+(d.f||'—')+'</td>'+
       '<td class="kwh">'+Number(d.ak||0).toLocaleString('es-CO')+'</td>'+
+      '<td class="map-col"><button type="button" class="map-btn" title="Ver esta solicitud en el mapa" aria-label="Ver esta solicitud en el mapa">Mapa</button></td>'+
     '</tr>'
   ).join('');
-  body.querySelectorAll('tr').forEach(tr=>{
-    tr.addEventListener('click', ()=>{
-      const d = DATA.find(x=>x.c===tr.dataset.code);
-      if(!d) return;
-      setView('map');
-      selectPoint(d);
-    });
-  });
+  wireRowActions(body);
 }
 function renderTable(){
   const tableRows = getFiltered().filter(passesTableFilters);
@@ -823,16 +872,10 @@ function renderTable(){
       '<td title="'+(d.es||'')+'"><span class="st-dot" style="background:'+estadoColor(d.es)+'"></span>'+d.es+'</td>'+
       '<td title="'+(d.se||'')+'">'+(d.se||'—')+'</td>'+
       '<td class="mono">'+(d.f||'—')+'</td>'+
+      '<td class="map-col"><button type="button" class="map-btn" title="Ver esta solicitud en el mapa" aria-label="Ver esta solicitud en el mapa">Mapa</button></td>'+
     '</tr>'
   ).join('');
-  body.querySelectorAll('tr').forEach(tr=>{
-    tr.addEventListener('click', ()=>{
-      const d = DATA.find(x=>x.c===tr.dataset.code);
-      if(!d) return;
-      setView('map');
-      selectPoint(d);
-    });
-  });
+  wireRowActions(body);
   updateSortArrows();
 }
 function updateSortArrows(){
@@ -843,7 +886,7 @@ function updateSortArrows(){
     }
   });
 }
-document.querySelectorAll('#dataTable thead tr.sort-row th').forEach(th=>{
+document.querySelectorAll('#dataTable thead tr.sort-row th[data-key]').forEach(th=>{
   th.addEventListener('click', ()=>{
     if(tableSort.key===th.dataset.key){ tableSort.dir = tableSort.dir==='asc'?'desc':'asc'; }
     else { tableSort.key = th.dataset.key; tableSort.dir = 'asc'; }
