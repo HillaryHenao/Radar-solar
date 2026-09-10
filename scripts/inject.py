@@ -56,6 +56,18 @@ def reemplazar_data(html: str, filas: list[dict]) -> str:
     return html[:inicio] + "const DATA = " + payload + html[fin:]
 
 
+def leer_html(origen: Path) -> str:
+    """Lee el HTML preservando los saltos de linea CRLF del archivo original.
+
+    Esta funcion lee con newline="" para garantizar que \\r\\n se mantiene como
+    caracteres literales en la cadena. El modulo promete dejar todo fuera del
+    array DATA sin cambios, y una lectura en modo universal-newlines rompe esa
+    promesa antes de que el empalme siquiera corra.
+    """
+    with open(origen, encoding="utf-8", newline="") as f:
+        return f.read()
+
+
 def escribir_atomico(destino: Path, contenido: str) -> None:
     """Escribe a un temporal en el mismo directorio y reemplaza de una vez."""
     destino = Path(destino)
@@ -66,6 +78,13 @@ def escribir_atomico(destino: Path, contenido: str) -> None:
         with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as manejador:
             manejador.write(contenido)
         os.replace(temporal, destino)
+    except OSError as exc:
+        if os.path.exists(temporal):
+            os.unlink(temporal)
+        raise InjectError(
+            f"no se pudo escribir en {destino}: {exc}. "
+            "Verificar que el archivo no este abierto en otro programa."
+        ) from exc
     except BaseException:
         if os.path.exists(temporal):
             os.unlink(temporal)

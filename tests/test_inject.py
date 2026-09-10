@@ -7,6 +7,7 @@ from scripts.inject import (
     InjectError,
     escribir_atomico,
     leer_data,
+    leer_html,
     reemplazar_data,
 )
 
@@ -36,16 +37,20 @@ def test_reemplazar_data_cambia_solo_el_tramo_del_array():
 
 
 def test_reemplazar_data_preserva_el_resto_byte_a_byte():
+    from scripts.inject import _limites
+
     original = _html()
     filas = leer_data(original)
     # Reinyectar lo mismo debe cambiar unicamente el formato del array, y el
     # resto del archivo debe seguir siendo identico.
     salida = reemplazar_data(original, filas)
-    marcador = "const DATA = "
-    assert original[: original.index(marcador)] == salida[: salida.index(marcador)]
-    cola_original = original[original.index("const ESTADO_ORDER") :]
-    cola_salida = salida[salida.index("const ESTADO_ORDER") :]
-    assert cola_original == cola_salida
+
+    # Calcular los limites en original y salida usando el metodo real.
+    inicio_orig, fin_orig = _limites(original)
+    inicio_salida, fin_salida = _limites(salida)
+
+    # Comparar todo excepto el array: prefijo + sufijo deben ser identicos.
+    assert original[:inicio_orig] + original[fin_orig:] == salida[:inicio_salida] + salida[fin_salida:]
 
 
 def test_reemplazar_data_no_escapa_los_acentos():
@@ -71,3 +76,45 @@ def test_escribir_atomico_no_deja_temporales(tmp_path):
     escribir_atomico(destino, "nuevo")
     assert destino.read_text(encoding="utf-8") == "nuevo"
     assert list(tmp_path.iterdir()) == [destino]
+
+
+def test_reemplazar_data_preserva_crlf(tmp_path):
+    """Regresion: verificar que CRLF se preserve a traves del ciclo completo.
+
+    El archivo real tiene 993 CRLF y zero LF solitarios. Una lectura en modo
+    universal-newlines colapsaria \\r\\n a \\n, rompiendo la promesa de que
+    todo fuera del array queda intacto.
+    """
+    # Crear HTML con CRLF explícitos.
+    html_con_crlf = (
+        "<!doctype html>\r\n"
+        "<html><body>\r\n"
+        "<script>\r\n"
+        'const DATA = [{"c":"1","e":"ACME","es":"Estudio solicitud"}];\r\n'
+        "const ESTADO_ORDER = [];\r\n"
+        "</script>\r\n"
+        "</body></html>"
+    )
+
+    # Escribir con newline="" para preservar CRLF.
+    archivo = tmp_path / "con_crlf.html"
+    archivo.write_text(html_con_crlf, encoding="utf-8", newline="")
+
+    # Contar CRLF en el original.
+    original_bytes = archivo.read_bytes()
+    crlf_count_original = original_bytes.count(b"\r\n")
+    assert crlf_count_original > 0, "El fixture debe tener al menos un CRLF"
+
+    # Leer con leer_html, reemplazar, escribir.
+    html = leer_html(archivo)
+    filas = leer_data(html)
+    nuevas_filas = [{"c": "2", "e": "NUEVA", "es": "De Baja"}]
+    salida = reemplazar_data(html, nuevas_filas)
+    escribir_atomico(archivo, salida)
+
+    # Verificar que los CRLF se preservaron.
+    resultado_bytes = archivo.read_bytes()
+    crlf_count_resultado = resultado_bytes.count(b"\r\n")
+    assert crlf_count_resultado == crlf_count_original, (
+        f"CRLF destruidos: {crlf_count_original} -> {crlf_count_resultado}"
+    )
