@@ -478,13 +478,13 @@ footer p{max-width:66ch}
     <h1>Consulta air-e</h1>
     <p class="standfirst">
       Refrescar los <strong>1.586 registros</strong> del radar contra el portal CREG030 de air-e,
-      la única fuente veraz, y agregar los dos campos de <strong>almacenamiento de energía</strong>
-      que hoy no existen en la base.
+      la única fuente veraz, y hacer explotable el <strong>almacenamiento de energía</strong>:
+      filtro en el sidebar y tabla en Análisis. Total resultante: <strong>1.589</strong>.
     </p>
     <div class="stamps">
       <span class="stamp"><b>2026-09-10</b></span>
       <span class="stamp">rama <b>consulta-aire-almacenamiento</b></span>
-      <span class="stamp">commit <b>ed8f130</b></span>
+      <span class="stamp">air-e medido <b>10.368 solicitudes</b></span>
       <span class="stamp stamp--live">Aprobado · pendiente de plan</span>
     </div>
   </header>
@@ -494,10 +494,11 @@ footer p{max-width:66ch}
     <nav class="rail" aria-label="Secciones">
       <p class="rail-title">Contenido</p>
       <ol>
-        <li><a href="#decisiones">Pendiente de tu decisión</a></li>
+        <li><a href="#decisiones">Estado de las decisiones</a></li>
         <li><a href="#fuente">Fuente de datos</a></li>
         <li><a href="#mapeo">Mapeo de campos</a></li>
         <li><a href="#sheet">El sheet</a></li>
+        <li><a href="#almacenamiento">Almacenamiento</a></li>
         <li><a href="#alcance">Alcance</a></li>
         <li><a href="#arquitectura">Arquitectura</a></li>
         <li><a href="#fusion">Reglas de fusión</a></li>
@@ -513,29 +514,104 @@ footer p{max-width:66ch}
 
       <section id="decisiones">
         <div class="decisions">
-          <p class="eyebrow">Necesito tu criterio</p>
-          <h2>Dos puntos donde tu decisión puede diferir de la mía</h2>
+          <p class="eyebrow">Estado de las decisiones</p>
+          <h2>Qué quedó resuelto y qué sigue abierto</h2>
           <ol class="decision-list">
             <li>
               <span class="dnum">01</span>
               <div>
-                <h3>Los 5 códigos huérfanos del sheet</h3>
-                <p>Los dejo fuera del mapa, porque air-e no los conoce. Si preferís que
-                <code>20707</code> y <code>20715</code> entren con los datos del sheet, se puede — pero
-                contradice el principio de fiarse de air-e, y <strong>quedarían sin coordenadas, o sea
-                invisibles en el mapa</strong>.</p>
+                <h3>Los 5 códigos huérfanos del sheet <span class="chip chip--ok">Resuelto</span></h3>
+                <p>Quedan fuera del mapa. air-e no los conoce, así que no hay datos veraces que
+                poner, y sin coordenadas serían invisibles igual. Se listan en el reporte.</p>
               </div>
             </li>
             <li>
               <span class="dnum">02</span>
               <div>
-                <h3>El umbral del 25% de deriva de estados</h3>
-                <p>Es una guarda que puse a ojo para detectar un pull defectuoso. <strong>Si sabés que
-                air-e mueve estados en lotes grandes, hay que subirlo</strong> o la corrida va a abortar
-                sin motivo real.</p>
+                <h3>El umbral de deriva de estados <span class="chip chip--ok">Corregido</span></h3>
+                <p>Baja de 25% a <strong>5%</strong>, y la corrida inicial se exceptúa con
+                <code>--corrida-inicial</code>. El 25% no atajaba nada — el mayor movimiento real
+                registrado fue de 0,7% — y además habría abortado la primera corrida, que es
+                justamente una corrección.</p>
+              </div>
+            </li>
+            <li>
+              <span class="dnum">03</span>
+              <div>
+                <h3>Los 3 proyectos con almacenamiento <span class="chip chip--ok">Resuelto</span></h3>
+                <p>Se incorporan <code>25857</code>, <code>22637</code> y <code>26761</code>. Sin
+                ellos la tabla nacía con 2 filas de 10 y 5 kWh.</p>
+              </div>
+            </li>
+            <li>
+              <span class="dnum">04</span>
+              <div>
+                <h3>Los 28 registros que no existen en air-e <span class="chip chip--warn">Para tu revisión</span></h3>
+                <p>El pull completo reveló 28 registros de la BD sin contraparte en air-e. Yo había
+                extrapolado 0 desde una muestra de un mes. <strong>Se conservan y se reportan, pero
+                vale que los mires</strong>: puede haber solicitudes anuladas o códigos mal
+                capturados.</p>
               </div>
             </li>
           </ol>
+        </div>
+      </section>
+
+      <section id="almacenamiento">
+        <h2>Almacenamiento: la medición</h2>
+        <p class="kicker">10.368 solicitudes únicas · 49 de 49 periodos sin error</p>
+        <p>
+          Se bajó el histórico completo de air-e una vez para dimensionar la función. El resultado
+          reorientó el diseño.
+        </p>
+        <div class="tw">
+          <table>
+            <caption>Almacenamiento en air-e</caption>
+            <thead>
+              <tr><th></th><th class="num">Registros</th><th class="num">Capacidad</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>air-e completo</td><td class="num">10.368</td><td class="num">—</td></tr>
+              <tr><td>Con almacenamiento</td><td class="num">309</td><td class="num">44.337 kWh</td></tr>
+              <tr><td><strong>De esos, ya en la BD</strong></td><td class="num"><strong>2</strong></td><td class="num"><strong>15 kWh</strong></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          El motivo es estructural: de los 309 con almacenamiento, <strong>306 son
+          <code>AGPE ≤0.1MVA</code></strong>, justo la categoría residencial que el subconjunto
+          curado excluye. Solo 3 son de escala proyecto, y ninguno estaba en el radar.
+        </p>
+        <div class="tw">
+          <table>
+            <caption>Los 3 que se incorporan</caption>
+            <thead>
+              <tr><th class="mono">Código</th><th class="num">Capacidad</th><th>Estado</th><th>Cliente</th><th>Municipio</th></tr>
+            </thead>
+            <tbody>
+              <tr><td class="mono">25857</td><td class="num">6.517 kWh</td><td>Estudio solicitud</td><td>GECELCA</td><td>Fonseca</td></tr>
+              <tr><td class="mono">22637</td><td class="num">6.200 kWh</td><td>Revisión documento</td><td>GECELCA</td><td>Fonseca</td></tr>
+              <tr><td class="mono">26761</td><td class="num">215 kWh</td><td>Estudio solicitud</td><td>GreenYellow Solar</td><td>Ciénaga</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          Esos 3 concentran <strong>12.932 kWh</strong>, cerca del 30% de todo el almacenamiento del
+          Caribe. Los 306 residenciales quedan documentados en el reporte: incorporarlos sería +19%
+          de registros que cambiarían el carácter del mapa y desplazarían los rankings de empresas.
+        </p>
+        <div class="note">
+          <p class="eyebrow">Codificación verificada a escala</p>
+          <p>
+            Sobre las 10.368 solicitudes, <code>TIENE_ALMACENAMIENTO</code> solo toma los valores
+            <code>1</code> y <code>2</code>, y no hay ni un caso de <code>2</code> con capacidad
+            mayor que cero. La lectura <code>1=Sí / 2=No</code> queda confirmada más allá del PDF.
+          </p>
+          <p>
+            Sí existen <strong>3 registros con <code>1</code> y capacidad <code>0</code></strong>, la
+            incoherencia que este diseño anticipaba. Ninguno está en la BD. Se reportan, no se
+            interpretan.
+          </p>
         </div>
       </section>
 
@@ -737,32 +813,47 @@ Content-Type: application/json; charset=utf-8
             </div>
           </li>
           <li>
-            <span class="chip chip--stop">No</span>
+            <span class="chip chip--ok">Sí</span>
             <div>
-              <p class="lead">Incorporar registros nuevos de air-e</p>
-              <p>Los 5 códigos del sheet que faltan en la BD no son incorporables, así que el total se mantiene en <strong>1.586</strong>.</p>
+              <p class="lead">Agregar los 3 de escala proyecto con almacenamiento</p>
+              <p><code>25857</code>, <code>22637</code> y <code>26761</code>. Total resultante: <strong>1.589</strong>.</p>
             </div>
           </li>
           <li>
             <span class="chip chip--ok">Sí</span>
             <div>
               <p class="lead">Agregar almacenamiento a todos los registros</p>
-              <p>Los campos <code>al</code> y <code>ak</code>, con respuesta y capacidad en kWh.</p>
+              <p>Los campos <code>al</code> y <code>ak</code>, con filtro en el sidebar y tabla en Análisis.</p>
+            </div>
+          </li>
+          <li>
+            <span class="chip chip--stop">No</span>
+            <div>
+              <p class="lead">Incorporar el resto del universo air-e</p>
+              <p>Los 5 códigos del sheet que faltan no son incorporables, y los 306 residenciales con almacenamiento quedan en el reporte.</p>
             </div>
           </li>
         </ul>
+        <div class="note">
+          <p class="eyebrow">Cómo cambió el total, y por qué</p>
+          <p>
+            La segunda decisión cambió dos veces sobre evidencia. Primero se planeó agregar
+            <code>20707</code> y <code>20715</code> del sheet: al verificarlos, no existen en air-e.
+            Después la medición del almacenamiento mostró que la función nacía vacía sin los 3 de
+            escala proyecto. Total previsto: <strong>1.588 → 1.586 → 1.589</strong>.
+          </p>
+        </div>
+
+        <h3>Los 28 registros de la BD que no existen en air-e</h3>
         <p>
-          La segunda decisión se tomó asumiendo que se agregarían <code>20707</code> y
-          <code>20715</code>. Al verificarlos contra air-e resultó que no existen, así que el total
-          previsto pasó de 1.588 a 1.586. Es un cambio a la baja y sin pérdida de información: los 5
-          códigos quedan documentados en el reporte.
+          El pull completo reveló que <strong>28 de los 1.586 no aparecen en air-e</strong>. La
+          extrapolación inicial desde una muestra de un mes daba 0, así que el diseño ya los
+          contemplaba pero subestimaba el número. Se conservan sin cambios y se listan en el reporte
+          de forma destacada: no se eliminan y no se inventan datos para ellos.
         </p>
 
         <h3>Sobre los registros de air-e que faltan en la BD</h3>
-        <p>
-          Los 1.586 son un subconjunto curado de air-e. Todos existen en air-e — cero huérfanos en
-          las muestras — pero air-e tiene bastante más:
-        </p>
+        <p>Los 1.586 son un subconjunto curado de air-e:</p>
         <div class="tw">
           <table>
             <caption>Cobertura de la BD frente a air-e</caption>
@@ -853,16 +944,56 @@ scripts/build_data.py ──► index.html  (const DATA reinyectado)
             reporte como «no encontrado en air-e» para revisión manual. No se elimina.
           </li>
           <li>
-            <strong>No se agregan registros nuevos.</strong> Los 5 códigos del sheet ausentes de la BD
-            van al reporte, no al <code>DATA</code>.
+            <strong>Los 3 registros nuevos</strong> (<code>25857</code>, <code>22637</code>,
+            <code>26761</code>) entran con todos los campos de air-e, más los campos propios
+            asignados a mano.
+          </li>
+          <li>
+            <strong>Ningún otro registro se agrega.</strong> Los 5 códigos del sheet ausentes de la
+            BD y los 306 residenciales con almacenamiento van al reporte, no al <code>DATA</code>.
           </li>
           <li><strong>Ningún registro se elimina, nunca.</strong></li>
         </ul>
+
+        <h3>Los campos propios de los 3 nuevos</h3>
+        <p>
+          Estos registros no están en el sheet de ECS, así que <code>e</code>, <code>se</code>,
+          <code>p</code> y <code>un</code> no tienen origen. Como son solo 3, se asignan
+          explícitamente en lugar de derivarlos con una heurística:
+        </p>
+        <div class="tw">
+          <table>
+            <caption>Asignación manual</caption>
+            <thead>
+              <tr><th>Campo</th><th class="mono">25857</th><th class="mono">22637</th><th class="mono">26761</th></tr>
+            </thead>
+            <tbody>
+              <tr><td class="mono">e</td><td>GECELCA</td><td>GECELCA</td><td>GREENYELLOW</td></tr>
+              <tr><td class="mono">se</td><td>vacío</td><td>vacío</td><td>vacío</td></tr>
+              <tr><td class="mono">p</td><td>vacío</td><td>vacío</td><td>vacío</td></tr>
+              <tr><td class="mono">un</td><td>false</td><td>false</td><td>false</td></tr>
+              <tr><td class="mono">b</td><td>sept10</td><td>sept10</td><td>sept10</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          <code>GREENYELLOW</code> ya existe como empresa en el sheet, así que es consistente con lo
+          que la BD usa. <code>GECELCA</code> es nuevo y aparecerá en el filtro de empresas.
+        </p>
+        <div class="note">
+          <p class="eyebrow">se vacío es un estado nuevo en la BD</p>
+          <p>
+            Hoy los 1.586 tienen <code>se</code> poblado. El vacío significa «sin seguimiento en el
+            sheet de ECS», que es la verdad para estos 3. La UI debe renderizarlo como <code>—</code>
+            en la tabla y en la ficha, no como celda en blanco, y el filtro de texto de esa columna
+            no debe romperse con el vacío.
+          </p>
+        </div>
         <p>
           El snapshot debe cubrir los 1.586. Si alguno no aparece, es señal de que el listado por
           rango de fechas no devuelve todo, y hay que investigarlo antes de confiar en el resultado —
           no basta con conservar el registro viejo en silencio. Por eso va al reporte de forma
-          destacada.
+          destacada. Con el pull completo, ese número es 28.
         </p>
       </section>
 
@@ -877,17 +1008,17 @@ scripts/build_data.py ──► index.html  (const DATA reinyectado)
           </li>
           <li>
             <h3>Conteo</h3>
-            <p>Si el resultado final tiene menos de 1.586 registros.</p>
+            <p>Si el resultado final tiene menos de 1.589 registros.</p>
             <span class="abort">Aborta</span>
           </li>
           <li>
             <h3>Deriva de estados</h3>
-            <p>Si más del 25% de los estados cambia en una sola corrida. El movimiento real es gradual; un salto masivo indica un pull defectuoso.</p>
+            <p>Si más del <strong>5%</strong> de los estados cambia en una sola corrida. Excepción explícita para la corrida inicial.</p>
             <span class="abort">Aborta</span>
           </li>
           <li>
             <h3>Coordenadas</h3>
-            <p>Si algún registro queda sin <code>la</code>/<code>lo</code>. Hoy los 1.586 tienen coordenadas.</p>
+            <p>Si algún registro queda sin <code>la</code>/<code>lo</code>. Hoy los 1.586 tienen coordenadas, y los 3 nuevos las traen de air-e.</p>
             <span class="abort">Aborta</span>
           </li>
         </ul>
@@ -895,21 +1026,100 @@ scripts/build_data.py ──► index.html  (const DATA reinyectado)
           Un fallo en cualquier mes aborta el build completo. <strong>No se escribe un
           <code>DATA</code> parcial.</strong>
         </p>
+
+        <h3>La deriva de estados y la corrida inicial</h3>
+        <p>
+          El umbral original era 25%. Tenía dos problemas, ambos detectados al revisar.
+        </p>
+        <p>
+          <strong>Demasiado laxo para el régimen normal.</strong> El commit <code>550f264</code>
+          dice «Update estado air-e for 11 solicitudes that advanced»: 11 de 1.586 es
+          <strong>0,7%</strong>. Contra ese referente, 25% son unos 397 registros y no atajaría casi
+          ningún pull defectuoso. El umbral en régimen queda en <strong>5%</strong> — unos 79
+          registros, siete veces el mayor movimiento real observado.
+        </p>
+        <p>
+          <strong>No aplica a la primera corrida.</strong> Esta corrida es precisamente una
+          corrección de datos que hoy están mal, así que puede mover muchos estados con total
+          legitimidad, y la guarda abortaría justo cuando debe trabajar.
+        </p>
+        <ul>
+          <li><code>build_data.py</code> acepta <code>--corrida-inicial</code>, que <strong>reemplaza el aborto por un reporte obligatorio</strong>: la deriva se calcula igual, se detalla estado por estado, y el build continúa.</li>
+          <li>El flag no tiene efecto silencioso: si se pasa, el reporte lo declara en la cabecera, para que quede en el historial por qué esa corrida no fue validada contra el umbral.</li>
+          <li>De la segunda corrida en adelante, umbral del 5% y aborto.</li>
+        </ul>
+        <p>
+          La revisión humana del reporte es lo que sustituye a la guarda en la corrida inicial. Ese
+          es el punto donde se compara la deriva contra lo que sabés que pasó de verdad en air-e.
+        </p>
       </section>
 
       <section id="ui">
         <h2>Interfaz</h2>
         <p class="kicker">Sobre la estructura que ya existe en index.html</p>
-        <ul>
-          <li><strong>Sidebar</strong> — check <code>Solo con almacenamiento (N)</code>, junto a los filtros de empresa y ciudad, integrado al mismo pipeline de filtrado que alimenta el contador de resultados y el mapa.</li>
-          <li><strong>Popup del mapa y ficha</strong> — línea <code>Almacenamiento: Sí — 250 kWh</code>, o <code>No</code>.</li>
-          <li><strong>Vista Análisis</strong> — tarjeta <code>Con almacenamiento: N solicitudes · X kWh total</code>, junto a los insights actuales.</li>
-          <li><strong>Footer</strong> — <code>Actualizado 2026-09-10</code>; hoy dice <code>2026-09-01</code>.</li>
-        </ul>
+
+        <h3>Sidebar</h3>
         <p>
-          No se agrega columna a la vista Tabla: el almacenamiento aparece en cerca del 2% de las
-          solicitudes — 3 de 177 en oct-2024 — y la columna quedaría casi vacía.
+          Check <code>Solo con almacenamiento (N)</code>, junto a los filtros de empresa y ciudad,
+          integrado al mismo pipeline de filtrado que ya alimenta el contador de resultados, el mapa
+          y la vista Tabla. El contador refleja los registros con almacenamiento
+          <strong>entre los visibles según los demás filtros</strong>, igual que el resto de los
+          controles del sidebar, no un total fijo.
         </p>
+
+        <h3>Popup del mapa y ficha</h3>
+        <p>
+          Línea <code>Almacenamiento: Sí — 6.517 kWh</code>, o <code>No</code>. Con
+          <code>al = null</code> muestra <code>Sin dato</code>, nunca <code>No</code>: son cosas
+          distintas y confundirlas falsea la lectura.
+        </p>
+
+        <h3>Vista Análisis</h3>
+        <p>
+          Una tarjeta resumen <code>Con almacenamiento: N solicitudes · X kWh total</code> junto a
+          los insights actuales, y la tabla explícita de proyectos con almacenamiento, ordenada por
+          capacidad descendente:
+        </p>
+        <div class="tw">
+          <table>
+            <caption>Columnas de la tabla de análisis</caption>
+            <thead>
+              <tr><th>Columna</th><th class="mono">Origen</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Código</td><td class="mono">c</td></tr>
+              <tr><td>Empresa</td><td class="mono">e</td></tr>
+              <tr><td>Cliente</td><td class="mono">cl</td></tr>
+              <tr><td>Municipio</td><td class="mono">ci</td></tr>
+              <tr><td>Tipo de generación</td><td class="mono">tg</td></tr>
+              <tr><td>Estado air-e</td><td class="mono">es</td></tr>
+              <tr><td>Estado Sheet</td><td class="mono">se</td></tr>
+              <tr><td><strong>Capacidad (kWh)</strong></td><td class="mono">ak</td></tr>
+              <tr><td>Fecha solicitud</td><td class="mono">f</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          La tabla respeta los filtros activos del sidebar, así que sirve de inventario completo y de
+          vista filtrada por empresa o municipio. Con los filtros limpios arranca en
+          <strong>5 filas y 12.947 kWh</strong>. Cuando ningún registro visible tiene almacenamiento,
+          muestra un estado vacío en lugar de encabezados sueltos — el mismo patrón de
+          <code>008dcd0 Show empty-state message when no estado changes are detected</code>.
+        </p>
+        <p>
+          Con 5 filas no necesita paginación, pero va en un contenedor con scroll propio: si más
+          adelante entran los 306 residenciales, pasaría a 309 filas sin rehacerla.
+        </p>
+
+        <h3>Vista Tabla</h3>
+        <p>
+          No se le agrega columna de almacenamiento: sobre los 1.589 registros el dato aparece en 5,
+          y la columna quedaría vacía en el 99,7% de las filas. La tabla de Análisis cubre ese caso
+          de uso mejor.
+        </p>
+
+        <h3>Footer</h3>
+        <p><code>Actualizado 2026-09-10</code>; hoy dice <code>2026-09-01</code>.</p>
       </section>
 
       <section id="pruebas">
@@ -929,9 +1139,10 @@ scripts/build_data.py ──► index.html  (const DATA reinyectado)
           <li><code>scripts/fetch_aire.py</code>, <code>scripts/build_data.py</code> y sus tests</li>
           <li><code>data/snapshots/aire-2026-09-10.json</code></li>
           <li><code>data/reports/cambios-2026-09-10.md</code></li>
-          <li><code>index.html</code> con 1.586 registros verificados contra air-e y campos de almacenamiento</li>
-          <li>Reporte del universo air-e no incorporado, por tipo, estado y mes</li>
+          <li><code>index.html</code> con 1.589 registros verificados contra air-e, campos de almacenamiento, filtro en el sidebar y tabla en Análisis</li>
+          <li>Reporte del universo air-e no incorporado, por tipo, estado y mes, incluidos los 306 residenciales con almacenamiento</li>
           <li>Reporte de los 5 códigos del sheet sin contraparte en air-e</li>
+          <li>Reporte de los 28 registros de la BD que no existen en air-e</li>
         </ul>
       </section>
 
@@ -949,14 +1160,14 @@ scripts/build_data.py ──► index.html  (const DATA reinyectado)
             <span class="chip chip--warn">Después</span>
             <div>
               <p class="lead">Despliegue a Vercel</p>
-              <p>Se decide después de revisar el reporte de cambios.</p>
+              <p>Se decide después de revisar el reporte de cambios. El <code>.vercelignore</code> mantiene <code>docs/</code>, <code>data/</code>, <code>scripts/</code> y <code>tests/</code> fuera del deployment: el sitio es estático, así que sin esa exclusión el spec y los snapshots crudos quedarían alcanzables por URL pública.</p>
             </div>
           </li>
           <li>
             <span class="chip chip--warn">Después</span>
             <div>
-              <p class="lead">Incorporar registros nuevos de air-e</p>
-              <p>Decisión aplazada, con el reporte de faltantes como insumo.</p>
+              <p class="lead">El resto del universo air-e</p>
+              <p>Se incorporan solo los 3 de escala proyecto con almacenamiento. Los 306 residenciales con almacenamiento y los ~1.000-1.500 de escala proyecto sin almacenamiento quedan aplazados, con el reporte como insumo.</p>
             </div>
           </li>
         </ul>
@@ -969,8 +1180,8 @@ scripts/build_data.py ──► index.html  (const DATA reinyectado)
     <p>
       El documento fuente vive en el repo del radar, en
       <code>docs/superpowers/specs/2026-09-10-radar-solar-consulta-aire-design.md</code>,
-      commiteado en <code>ed8f130</code> sobre la rama <code>consulta-aire-almacenamiento</code>.
-      Nada se ha desplegado a Vercel.
+      sobre la rama <code>consulta-aire-almacenamiento</code>. Nada se ha desplegado a Vercel, y la
+      rama todavía no se ha empujado a GitHub.
     </p>
   </footer>
 

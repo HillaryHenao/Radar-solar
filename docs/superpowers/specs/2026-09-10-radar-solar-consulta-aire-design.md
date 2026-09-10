@@ -11,7 +11,10 @@ autoritativa: contiene información errónea. La única fuente veraz es el porta
 CREG030 de air-e.
 
 Falta además un dato que hoy no existe en el radar: si la solicitud cuenta con
-almacenamiento de energía y con qué capacidad en kWh.
+almacenamiento de energía y con qué capacidad en kWh. Ese dato tiene que quedar
+explotable, no solo almacenado: filtro en el sidebar y una tabla en la vista
+Análisis que liste los proyectos con almacenamiento con su fecha, estado,
+capacidad y empresa.
 
 ## Fuente de datos
 
@@ -123,31 +126,85 @@ El barrido de 2024 dejó ver además que la secuencia de `CONSECUTIVO` no es den
 (mayo de 2024 salta de `18432` a `21000`), así que la ausencia de `20707`/`20715`
 no es un hueco anómalo del listado sino un rango que simplemente no existe.
 
+## Almacenamiento: la medición
+
+Se bajó el histórico completo de air-e una vez para dimensionar la función:
+**10.368 solicitudes únicas**, 49 de 49 periodos sin error.
+
+| | Registros | Capacidad |
+|---|---|---|
+| air-e completo | 10.368 | — |
+| Con almacenamiento | 309 (3%) | 44.337 kWh |
+| De esos, ya en la BD | **2** | **15 kWh** |
+
+Los dos que ya están son `22742` (10 kWh, C2EFICIENTE, Barranquilla) y `23773`
+(5 kWh, GMAIL, Santa Marta): baterías de techo, no proyectos.
+
+El motivo es estructural. De los 309 con almacenamiento, **306 son
+`AGPE ≤0.1MVA`**, justo la categoría residencial que el subconjunto curado
+excluye. Solo 3 son de escala proyecto, y ninguno estaba en el radar:
+
+| Código | Capacidad | Estado | Cliente | Municipio |
+|---|---|---|---|---|
+| `25857` | 6.517 kWh | Estudio solicitud | GECELCA | Fonseca |
+| `22637` | 6.200 kWh | Revisión documento | GECELCA | Fonseca |
+| `26761` | 215 kWh | Estudio solicitud | GreenYellow Solar | Ciénaga |
+
+Esos 3 concentran **12.932 kWh**, cerca del 30% de todo el almacenamiento del
+Caribe. Sin ellos, la tabla de análisis nacería con 2 filas de 10 y 5 kWh y la
+función sería decorativa.
+
+**Decisión: se agregan esos 3 y solo esos 3.** Los 306 residenciales quedan
+documentados en el reporte. Es un crecimiento de +0,2% que no altera el carácter
+del mapa ni los rankings de empresas, y mete exactamente lo que el radar quiere
+mostrar.
+
+### Codificación verificada a escala
+
+Sobre las 10.368 solicitudes, `TIENE_ALMACENAMIENTO` solo toma los valores `1` y
+`2`, y no hay ni un caso de `2` con capacidad mayor que cero. La lectura
+`1=Sí / 2=No` queda confirmada más allá del PDF de ejemplo.
+
+Sí existen **3 registros con `1` y capacidad `0`**, la incoherencia que este
+diseño anticipaba. Ninguno está en la BD ni entra con esta decisión. Se reportan,
+no se interpretan.
+
 ## Alcance
 
 Decisiones tomadas:
 
 1. **Refrescar los 1.586 registros existentes** con datos oficiales de air-e, no
    solo los 275 del sheet. El endpoint masivo hace que cueste lo mismo.
-2. **No incorporar registros nuevos de air-e** en esta iteración. Los 5 códigos
-   del sheet que faltan en la BD no son incorporables (ver más abajo), así que el
-   total se mantiene en **1.586**.
-3. **Agregar almacenamiento** a todos los registros.
+2. **Agregar únicamente los 3 registros de escala proyecto con almacenamiento**
+   (`25857`, `22637`, `26761`). Total resultante: **1.589**.
+3. **Agregar almacenamiento** a todos los registros, con tabla en Análisis y
+   filtro en el sidebar.
+4. **No incorporar el resto del universo air-e.** Los 5 códigos del sheet que
+   faltan no son incorporables, y los 306 residenciales con almacenamiento quedan
+   en el reporte.
 
-La decisión 2 se tomó asumiendo que se agregarían `20707` y `20715`. Al
-verificarlos contra air-e resultó que no existen, así que el total previsto pasó
-de 1.588 a 1.586. Es un cambio a la baja y sin pérdida de información: los 5
-códigos quedan documentados en el reporte.
+La decisión 2 cambió dos veces sobre evidencia, y vale registrar por qué. Primero
+se planeó agregar `20707` y `20715` del sheet: al verificarlos, no existen en
+air-e. Después la medición del almacenamiento mostró que la función nacía vacía
+sin los 3 de escala proyecto. Total previsto: 1.588 → 1.586 → 1.589.
 
 ### Sobre los registros de air-e que faltan en la BD
 
-Los 1.586 son un subconjunto curado de air-e. Todos existen en air-e (0
-huérfanos en las muestras), pero air-e tiene bastante más:
+Los 1.586 son un subconjunto curado de air-e:
 
 | Mes | air-e | BD | No están en la BD |
 |---|---|---|---|
 | oct-2024 | 177 | 19 | 158 |
 | jun-2025 | 269 | 73 | 196 |
+
+### Los 28 registros de la BD que no existen en air-e
+
+El pull completo reveló que **28 de los 1.586 no aparecen en air-e**. La
+extrapolación inicial desde una muestra de un mes daba 0, así que el diseño ya
+los contemplaba pero subestimaba el número.
+
+Se conservan sin cambios y se listan en el reporte de forma destacada. No se
+eliminan y no se inventan datos para ellos.
 
 La regla original de inclusión no es deducible: no es por tipo, ni por estado, ni
 por potencia. En jun-2025 la BD tiene 68 de 78 "GD ≤0.1MVA" y 5 de 43
@@ -217,14 +274,33 @@ Llave: `c` (`external_code`).
   t, tg, la, lo`; se agregan `al` y `ak`; se preservan `e, se, p, un, b`.
 - **Registro ausente del snapshot** → se conserva sin cambios y se lista en el
   reporte como "no encontrado en air-e" para revisión manual. No se elimina.
-- **No se agregan registros nuevos.** Los 5 códigos del sheet ausentes de la BD
-  van al reporte, no al `DATA`.
+- **Los 3 registros nuevos** (`25857`, `22637`, `26761`) entran con todos los
+  campos de air-e, más los campos propios asignados a mano (ver abajo).
+- **Ningún otro registro se agrega.** Los 5 códigos del sheet ausentes de la BD y
+  los 306 residenciales con almacenamiento van al reporte, no al `DATA`.
 - **Ningún registro se elimina, nunca.**
 
-El snapshot debe cubrir los 1.586. Si alguno no aparece, es señal de que el
-listado por rango de fechas no devuelve todo, y hay que investigarlo antes de
-confiar en el resultado — no basta con conservar el registro viejo en silencio.
-Por eso va al reporte de forma destacada.
+### Los campos propios de los 3 nuevos
+
+Estos registros no están en el sheet de ECS, así que `e`, `se`, `p` y `un` no
+tienen origen. Como son solo 3, se asignan explícitamente en lugar de derivarlos
+con una heurística:
+
+| Campo | `25857` | `22637` | `26761` |
+|---|---|---|---|
+| `e` | `GECELCA` | `GECELCA` | `GREENYELLOW` |
+| `se` | vacío | vacío | vacío |
+| `p` | vacío | vacío | vacío |
+| `un` | `false` | `false` | `false` |
+| `b` | `sept10` | `sept10` | `sept10` |
+
+`GREENYELLOW` ya existe como empresa en el sheet, así que el valor es consistente
+con lo que la BD ya usa. `GECELCA` es nuevo y aparecerá en el filtro de empresas.
+
+**`se` vacío es un estado nuevo en la BD**: hoy los 1.586 tienen `se` poblado. El
+vacío significa «sin seguimiento en el sheet de ECS», que es la verdad para estos
+3. La UI debe renderizarlo como `—` en la tabla y en la ficha, no como celda en
+blanco, y el filtro de texto de esa columna no debe romperse con el vacío.
 
 ## Guardas
 
@@ -234,43 +310,123 @@ parecen plausibles. Las cuatro guardas **abortan sin escribir nada**:
 1. **Indexación por identidad propia.** Cada registro del snapshot se indexa por
    su propio `CONSECUTIVO`. Nunca se asume que una respuesta corresponde a lo
    que se pidió.
-2. **Conteo.** Si el resultado final tiene menos de 1.586 registros → abortar.
-3. **Deriva de estados.** Si más del 25% de los estados cambia en una sola
-   corrida → abortar. El movimiento real de estados es gradual; un salto masivo
-   indica un pull defectuoso.
+2. **Conteo.** Si el resultado final tiene menos de 1.589 registros → abortar.
+3. **Deriva de estados.** Ver abajo: umbral del 5% con excepción explícita para
+   la corrida inicial.
 4. **Coordenadas.** Si algún registro queda sin `la`/`lo` → abortar. Hoy los
-   1.586 tienen coordenadas.
+   1.586 tienen coordenadas, y los 3 nuevos las traen de air-e.
 
 Un fallo en cualquier mes aborta el build completo. No se escribe un `DATA`
 parcial.
 
+### La deriva de estados y la corrida inicial
+
+El umbral original de este diseño era 25%. Dos problemas, ambos detectados al
+revisar:
+
+**Es demasiado laxo para el régimen normal.** El commit `550f264` dice *"Update
+estado air-e for 11 solicitudes that advanced"*: 11 de 1.586 es **0,7%**. Contra
+ese referente, 25% son unos 397 registros y no atajaría casi ningún pull
+defectuoso. El umbral en régimen queda en **5%** — unos 79 registros, siete veces
+el mayor movimiento real observado, con margen de sobra y capacidad real de
+detección.
+
+**No aplica a la primera corrida.** Esta corrida es precisamente una corrección
+de datos que hoy están mal, así que puede mover muchos estados con total
+legitimidad, y la guarda abortaría justo cuando debe trabajar. Por eso:
+
+- `build_data.py` acepta `--corrida-inicial`, que **reemplaza el aborto por un
+  reporte obligatorio**: la deriva se calcula igual, se detalla estado por estado
+  en el reporte de cambios, y el build continúa.
+- El flag no tiene efecto silencioso: si se pasa, el reporte lo declara en la
+  cabecera, para que quede en el historial por qué esa corrida no fue validada
+  contra el umbral.
+- De la segunda corrida en adelante se usa el umbral del 5% y el aborto.
+
+La revisión humana del reporte es lo que sustituye a la guarda en la corrida
+inicial. Ese es el punto donde se compara la deriva contra lo que sabés que pasó
+de verdad en air-e.
+
 ## Interfaz de usuario
 
-Sobre la estructura que ya existe en `index.html`:
+Sobre la estructura que ya existe en `index.html`.
 
-- **Sidebar** — check `Solo con almacenamiento (N)`, en la sección de filtros
-  junto a empresa y ciudad, integrado al mismo pipeline de filtrado que alimenta
-  el contador de resultados y el mapa.
-- **Popup del mapa y ficha** — línea `Almacenamiento: Sí — 250 kWh`, o `No`.
-- **Vista Análisis** — tarjeta `Con almacenamiento: N solicitudes · X kWh total`,
-  junto a los insights actuales.
-- **Footer** — `Actualizado 2026-09-10` (hoy dice `2026-09-01`).
+### Sidebar
 
-No se agrega columna a la vista Tabla: el almacenamiento aparece en ~2% de las
-solicitudes (3 de 177 en oct-2024) y la columna quedaría casi vacía.
+Check `Solo con almacenamiento (N)`, en la sección de filtros junto a empresa y
+ciudad, integrado al mismo pipeline de filtrado que ya alimenta el contador de
+resultados, el mapa y la vista Tabla. El contador `(N)` refleja los registros con
+almacenamiento **entre los visibles según los demás filtros**, igual que el resto
+de los controles del sidebar, no un total fijo.
+
+### Popup del mapa y ficha
+
+Línea `Almacenamiento: Sí — 6.517 kWh`, o `No`. Con `al = null` (dato ausente o
+incoherente en air-e) muestra `Sin dato`, nunca `No`: son cosas distintas y
+confundirlas falsea la lectura.
+
+### Vista Análisis
+
+Dos piezas:
+
+**Tarjeta resumen** — `Con almacenamiento: N solicitudes · X kWh total`, junto a
+los insights actuales.
+
+**Tabla explícita de los proyectos con almacenamiento**, ordenada por capacidad
+descendente:
+
+| Columna | Origen |
+|---|---|
+| Código | `c` |
+| Empresa | `e` |
+| Cliente | `cl` |
+| Municipio | `ci` |
+| Tipo de generación | `tg` |
+| Estado air-e | `es` |
+| Estado Sheet | `se`, con `—` si está vacío |
+| Fecha solicitud | `f` |
+| **Capacidad (kWh)** | `ak`, alineada a la derecha con `tabular-nums` |
+
+La tabla respeta los filtros activos del sidebar, de modo que sirve tanto de
+inventario completo como de vista filtrada por empresa o municipio. Con los
+filtros limpios arranca en **5 filas y 12.947 kWh**. Cuando ningún registro
+visible tiene almacenamiento, muestra un mensaje de estado vacío en lugar de una
+tabla con encabezados sueltos — el mismo patrón que ya usa
+`008dcd0 Show empty-state message when no estado changes are detected`.
+
+Con 5 filas no necesita paginación, pero va dentro de un contenedor con scroll
+propio, porque si más adelante se incorporan los 306 residenciales pasaría a 309
+filas sin que haya que rehacerla.
+
+### Vista Tabla
+
+No se le agrega columna de almacenamiento: sobre los 1.589 registros el dato
+aparece en 5, y la columna quedaría vacía en el 99,7% de las filas. La tabla de
+Análisis cubre ese caso de uso mejor.
+
+### Footer
+
+`Actualizado 2026-09-10`; hoy dice `2026-09-01`.
 
 ## Pruebas
 
 - **Unitarias de `build_data.py`** con fixtures: que preserve `e` y `se`, que no
-  pierda registros, que aplique `al` y `ak` correctamente, y que cada guarda
-  dispare cuando debe.
+  pierda registros, que aplique `al` y `ak` correctamente, que cada guarda
+  dispare cuando debe, y que `--corrida-inicial` convierta el aborto por deriva
+  en reporte sin saltarse el cálculo.
+- **Los 3 registros nuevos**: que entren con los campos propios asignados, que
+  `se` vacío se renderice `—`, y que `GECELCA` aparezca en el filtro de empresas.
+- **La tabla de Análisis**: que ordene por capacidad descendente, que respete los
+  filtros del sidebar, y que muestre el estado vacío cuando ningún registro
+  visible tiene almacenamiento.
 - **Registro golden: 21941**, contra `ejemplo.pdf`. Verificado ya campo por
   campo: `2024-10-30 14:32`, `Estudio solicitud`,
   `Green Yellow Energia de Colombia SAS`, `ARACATACA` / `ARACATACA`,
   `10.63491` / `-74.23092`, `Solar FV`, almacenamiento `No`, `0` kWh.
-- **Validación de `al`/`ak`**: comprobar contra registros con `al=1` que traigan
-  `ak > 0`. Si aparece una incoherencia (`al=1` con `ak=0`), se reporta en vez de
-  interpretarla.
+- **Validación de `al`/`ak`**: la codificación ya se verificó sobre las 10.368
+  solicitudes (solo valores `1` y `2`, ningún `2` con capacidad mayor que cero).
+  El test fija ese invariante y comprueba que los 3 casos de `al=1` con `ak=0`
+  se reporten en vez de interpretarse.
 - **Post-build**: reabrir `index.html`, reparsear el `DATA`, verificar conteo y
   muestras. Si el archivo no queda parseable, el build falla.
 - **Revisión humana del reporte de cambios** antes de commitear y desplegar.
@@ -280,10 +436,12 @@ solicitudes (3 de 177 en oct-2024) y la columna quedaría casi vacía.
 - `scripts/fetch_aire.py`, `scripts/build_data.py` y sus tests
 - `data/snapshots/aire-2026-09-10.json`
 - `data/reports/cambios-2026-09-10.md`
-- `index.html` con 1.586 registros verificados contra air-e y campos de
-  almacenamiento
-- Reporte del universo air-e no incorporado, por tipo/estado/mes
+- `index.html` con 1.589 registros verificados contra air-e, campos de
+  almacenamiento, filtro en el sidebar y tabla en Análisis
+- Reporte del universo air-e no incorporado, por tipo/estado/mes, incluidos los
+  306 residenciales con almacenamiento
 - Reporte de los 5 códigos del sheet sin contraparte en air-e
+- Reporte de los 28 registros de la BD que no existen en air-e
 
 ## Fuera de alcance
 
@@ -294,5 +452,10 @@ solicitudes (3 de 177 en oct-2024) y la columna quedaría casi vacía.
   carga con una actualización de datos multiplica el riesgo. Queda como paso
   posterior, pequeño y aislado.
 - **Despliegue a Vercel.** Se decide después de revisar el reporte de cambios.
-- **Incorporar registros nuevos de air-e.** Decisión aplazada, con el reporte
-  como insumo.
+  El `.vercelignore` mantiene `docs/`, `data/`, `scripts/` y `tests/` fuera del
+  deployment: el sitio es estático, así que sin esa exclusión el spec y los
+  snapshots crudos quedarían alcanzables por URL pública.
+- **El resto del universo air-e.** Se incorporan solo los 3 de escala proyecto
+  con almacenamiento. Los 306 residenciales con almacenamiento y los ~1.000-1.500
+  de escala proyecto sin almacenamiento quedan aplazados, con el reporte como
+  insumo.
