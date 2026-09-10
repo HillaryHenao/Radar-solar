@@ -150,15 +150,29 @@ def test_guarda_coordenadas_aborta_si_falta_una():
 
 
 def test_guarda_estados_conocidos_aborta_con_un_estado_nuevo():
-    # Con un solo registro, cambiar "es" dispara la guarda de deriva (100%)
-    # antes de llegar a la guarda de estados conocidos. Se usa un lote de 100
-    # con una sola anomalia -como en los tests de deriva- para mantener la
-    # deriva bajo el umbral y ejercitar especificamente esta guarda.
+    # Lote de 100 con una sola anomalia -como en los tests de deriva- para que
+    # este test ejercite especificamente la guarda de estados conocidos sin
+    # depender de en que orden se evaluen las guardas entre si.
     actuales = [_actual(c=str(i)) for i in range(100)]
     snapshot = [_snap(c=str(i)) for i in range(100)]
     snapshot[0]["es"] = "Normalizado"
     with pytest.raises(MergeError, match="Normalizado"):
         _fusionar(actuales, snapshot, total_minimo=1)
+
+
+def test_la_guarda_de_estados_gana_a_la_de_deriva():
+    # Un estado desconocido ES la causa de la deriva (un registro que migra a
+    # un estado que la UI no conoce cuenta como cambio de estado), no un
+    # problema aparte. Cuando ambas condiciones son ciertas a la vez -aqui,
+    # 50% de deriva y un estado desconocido- el diagnostico especifico y
+    # accionable debe ganarle a la alarma generica de deriva.
+    actuales = [_actual(c=str(i)) for i in range(100)]
+    snapshot = [_snap(c=str(i)) for i in range(100)]
+    for i in range(50):
+        snapshot[i]["es"] = "Normalizado"
+    with pytest.raises(MergeError, match="Normalizado") as excinfo:
+        _fusionar(actuales, snapshot, total_minimo=1)
+    assert "deriva de estados" not in str(excinfo.value)
 
 
 def test_guarda_municipios_aborta_con_ciudad_sin_departamento():

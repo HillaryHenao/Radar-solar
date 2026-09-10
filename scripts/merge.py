@@ -48,6 +48,20 @@ def _valida_guardas(filas: list[dict], informe: dict, estados_conocidos: set[str
             f"al menos {total_minimo}. Revisar el snapshot antes de reintentar."
         )
 
+    # Esta guarda va antes que la de deriva a proposito: un estado desconocido
+    # ES la causa de la deriva (un registro que migra a un estado que la UI no
+    # conoce cuenta como cambio de estado), asi que si ambas se disparan a la
+    # vez el diagnostico preciso ("Normalizado no esta en ESTADO_ORDER") debe
+    # ganarle a la alarma generica de deriva ("X% cambio de estado, sugiere un
+    # pull defectuoso"). Lo especifico y accionable primero; el sintoma despues.
+    desconocidos = sorted({f["es"] for f in filas if f["es"] not in estados_conocidos})
+    if desconocidos:
+        raise MergeError(
+            f"guarda de estados conocidos: {desconocidos} no estan en "
+            "ESTADO_ORDER. Entrarian sin color en el mapa y sin chip en el "
+            "filtro. Agregarlos a la UI antes de incorporarlos."
+        )
+
     if informe["deriva_estados"] > UMBRAL_DERIVA:
         pct = informe["deriva_estados"] * 100
         raise MergeError(
@@ -61,14 +75,6 @@ def _valida_guardas(filas: list[dict], informe: dict, estados_conocidos: set[str
         raise MergeError(
             f"guarda de coordenadas: {len(sin_coords)} registros quedaron sin "
             f"latitud o longitud, por ejemplo {sin_coords[:5]}."
-        )
-
-    desconocidos = sorted({f["es"] for f in filas if f["es"] not in estados_conocidos})
-    if desconocidos:
-        raise MergeError(
-            f"guarda de estados conocidos: {desconocidos} no estan en "
-            "ESTADO_ORDER. Entrarian sin color en el mapa y sin chip en el "
-            "filtro. Agregarlos a la UI antes de incorporarlos."
         )
 
     sin_depto = sorted({f["ci"] for f in filas if f["ci"] not in municipios_conocidos})
