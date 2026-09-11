@@ -2,3 +2,6 @@
 .superpowers/
 __pycache__/
 *.pyc
+
+# Exportaciones del sheet: datos de clientes, no van al repo ni al deployment
+*.csv
