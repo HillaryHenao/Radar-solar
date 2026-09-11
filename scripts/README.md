@@ -24,14 +24,29 @@ Correr los tests: `python -m pytest`
   Recodificar desde Latin-1 corrompe cada acento y produce cambios fantasma.
 - **`EL PI¿ON`** es cómo air-e escribe El Piñón. La clave de `DEPT_MAP` usa la
   forma corrupta a propósito.
-- **Las altas necesitan empresa asignada a mano** en `EMPRESAS_ALTAS`. Si la
-  regla de almacenamiento captura un código nuevo sin empresa, el build falla y
-  lo pide: no inventa el valor.
+- **Hay dos reglas de inclusión en `merge.py`, con manejo de empresa distinto
+  y sin relación entre sí:**
+  - `es_alta` — proyectos de escala de red (`GD`/`AG `) con almacenamiento.
+    **Necesitan empresa asignada a mano** en `EMPRESAS_ALTAS`. Si la regla
+    captura un código nuevo sin empresa, el build falla y lo pide: no inventa
+    el valor. Son pocos por corrida, así que asignar a mano es viable.
+  - `es_alta_unergy` — cliente contiene "unergy" (sin importar mayúsculas) y
+    fecha de solicitud desde 2026-01-01 en adelante (ancla "desde", no "año
+    ==", para que sea automantenida cuando llegue 2027). La empresa **se
+    deriva de la regla misma**: siempre `UNERGY` (constante `EMPRESA_UNERGY`),
+    nunca `EMPRESAS_ALTAS`. Son 227 códigos en la primera corrida — demasiados
+    para asignar a mano, y no hace falta: ya se sabe cuál es la empresa porque
+    es literalmente lo que la regla filtra. Ver
+    `docs/notas/2026-09-10-pendiente-filtro-cliente.md` para el diagnóstico
+    completo (por qué `empresa`/`e` no sirve para contar "proyectos de
+    Unergy": está partido entre `GMAIL` y `Unergy Energía Digital S.A.S` para
+    el mismo cliente).
 - Las guardas abortan sin escribir. Son 8 en total, y no las 7 del spec (ese
   numero cuenta identidad propia y cobertura de red, que viven en
   `aire_client.py`/`fetch_aire.py`, no en `merge.py`): `_valida_guardas` en
   `scripts/merge.py` tiene 7 caminos de abort (conteo, no eliminación, sin
   contraparte, estados conocidos, deriva de estados, coordenadas fuera del
   Caribe, municipios sin `DEPT_MAP`), y `fusionar` tiene una octava, separada,
-  para un alta sin empresa asignada. Si una se dispara, el mensaje dice qué
-  revisar.
+  para un alta de `es_alta` sin empresa asignada (esa guarda no aplica a
+  `es_alta_unergy`, que nunca necesita asignación manual). Si una se dispara,
+  el mensaje dice qué revisar.

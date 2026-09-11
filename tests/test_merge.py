@@ -3,6 +3,7 @@ import pytest
 from scripts.merge import (
     MergeError,
     es_alta,
+    es_alta_unergy,
     fusionar,
     render_reporte,
 )
@@ -145,6 +146,96 @@ def test_es_alta_no_confunde_ag_con_agpe():
     assert es_alta(
         {"al": True, "tg": "AGPE menor igual 1MVA y mayor 0.1MVA"}
     ) is False
+
+
+def test_es_alta_unergy_acepta_cliente_unergy_desde_2026():
+    assert es_alta_unergy(
+        {"cl": "Unergy Energía Digital S.A.S", "f": "2026-01-01 00:00"}
+    ) is True
+    assert es_alta_unergy(
+        {"cl": "Unergy Energía Digital S.A.S", "f": "2027-06-15 10:00"}
+    ) is True
+
+
+def test_es_alta_unergy_rechaza_fecha_anterior_a_2026():
+    assert es_alta_unergy(
+        {"cl": "Unergy Energía Digital S.A.S", "f": "2025-12-31 23:59"}
+    ) is False
+
+
+def test_es_alta_unergy_rechaza_cliente_no_unergy():
+    assert es_alta_unergy(
+        {"cl": "Otro Cliente S.A.S.", "f": "2026-05-01 00:00"}
+    ) is False
+
+
+def test_es_alta_unergy_es_insensible_a_mayusculas():
+    assert es_alta_unergy(
+        {"cl": "UNERGY ENERGIA DIGITAL S.A.S", "f": "2026-01-01 00:00"}
+    ) is True
+    assert es_alta_unergy(
+        {"cl": "unergy energia digital s.a.s", "f": "2026-01-01 00:00"}
+    ) is True
+
+
+def test_incorpora_alta_unergy_con_sus_campos_propios():
+    # A diferencia de la alta por almacenamiento, esta no pasa por
+    # EMPRESAS_ALTAS: `tg` es AGPE (la regla de almacenamiento la excluye) y
+    # `al` no interviene para nada en esta regla.
+    alta = _snap(
+        c="30001", cl="Unergy Energía Digital S.A.S", f="2026-03-15 09:00",
+        tg="AGPE menor igual 1MVA y mayor 0.1MVA",
+    )
+    filas, informe = _fusionar([_actual()], [_snap(), alta])
+
+    nueva = next(f for f in filas if f["c"] == "30001")
+    assert nueva["e"] == "UNERGY"
+    assert nueva["se"] == ""
+    assert nueva["p"] == ""
+    assert nueva["un"] is True
+    assert nueva["b"] == "sept10"
+    assert informe["altas_unergy"] == ["30001"]
+    # Misma forma de fila que las fusionadas, o el JS rompe en runtime.
+    assert set(nueva) == set(filas[0])
+
+
+def test_alta_unergy_no_requiere_empresa_asignada_en_empresas_altas():
+    # EMPRESAS_ALTAS es exclusivo de la regla de almacenamiento: un codigo de
+    # Unergy 2026 sin entrada ahi no debe hacer fallar el build.
+    from scripts.merge import EMPRESAS_ALTAS
+
+    alta = _snap(c="30002", cl="Unergy Energía Digital S.A.S", f="2026-01-01 00:00")
+    assert "30002" not in EMPRESAS_ALTAS
+
+    filas, informe = _fusionar([_actual()], [_snap(), alta])
+    assert informe["altas_unergy"] == ["30002"]
+    assert next(f for f in filas if f["c"] == "30002")["e"] == "UNERGY"
+
+
+def test_reglas_de_almacenamiento_y_de_cliente_unergy_coexisten(monkeypatch):
+    # Una fila cumple solo la regla de almacenamiento (y por eso si necesita
+    # EMPRESAS_ALTAS); la otra cumple solo la de cliente Unergy (y por eso no
+    # la necesita). Las dos deben incorporarse, cada una por su propio camino.
+    from scripts import merge
+
+    monkeypatch.setitem(merge.EMPRESAS_ALTAS, "25857", "GECELCA")
+    alta_almacenamiento = _snap(
+        c="25857", al=True, ak=6517.0, ci="FONSECA", cl="GECELCA S.A. E.S.P",
+    )
+    alta_unergy = _snap(
+        c="30003", cl="Unergy Energía Digital S.A.S", f="2026-02-01 00:00",
+        tg="AGPE menor igual 1MVA y mayor 0.1MVA",
+    )
+    filas, informe = _fusionar(
+        [_actual()], [_snap(), alta_almacenamiento, alta_unergy],
+    )
+
+    assert informe["altas"] == ["25857"]
+    assert informe["altas_unergy"] == ["30003"]
+    fila_gecelca = next(f for f in filas if f["c"] == "25857")
+    fila_unergy = next(f for f in filas if f["c"] == "30003")
+    assert fila_gecelca["e"] == "GECELCA" and fila_gecelca["un"] is False
+    assert fila_unergy["e"] == "UNERGY" and fila_unergy["un"] is True
 
 
 def test_incorpora_el_alta_con_sus_campos_propios(monkeypatch):

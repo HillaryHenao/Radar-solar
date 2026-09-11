@@ -234,6 +234,43 @@ persona en Riohacha. No es un proyecto, y por eso la regla se ancla en `GD` y no
 en «cualquier cosa que no sea AGPE ≤0.1MVA». Se reporta como candidato excluido,
 para poder incorporarlo con un cambio de una línea si se decide otra cosa.
 
+### Segunda regla de inclusión (adenda, misma fecha): cliente Unergy desde 2026
+
+Independiente de la regla de arriba y de `es_alta`. Diagnóstico completo en
+`docs/notas/2026-09-10-pendiente-filtro-cliente.md`: filtrando el radar por
+Unergy + 2026 aparecían 5 resultados mientras air-e tenía 232 solicitudes de
+ese cliente para 2026. La causa es que `empresa` (`e`) es la cuenta que
+radicó ante air-e, no el dueño del proyecto, y está partida para el mismo
+cliente (168 registros dicen `GMAIL`, otros `Unergy Energía Digital S.A.S`).
+`cliente` (`cl`), en cambio, viene de air-e sin ambigüedad.
+
+**Se incorpora un registro si `cl`, en minúsculas, contiene `unergy` y su
+fecha de solicitud (`f`) es `2026-01-01` o posterior.** Ancla en «desde 2026»
+y no en «año == 2026» para que la regla se automantenga: cuando llegue 2027
+esos proyectos entran solos, sin editar el código cada fin de año.
+
+Aplicada al universo completo da exactamente **227** registros nuevos, ninguno
+presente en la BD hasta este momento, todos `AGPE menor igual 1MVA y mayor
+0.1MVA` (la clase que la regla de almacenamiento excluye) y todos con el mismo
+`cl`: `Unergy Energía Digital S.A.S`. Los 227 pasan todas las guardas (0
+municipios fuera de `DEPT_MAP`, 0 estados fuera de `ESTADO_ORDER`, 0 sin
+coordenadas, 0 fuera de la caja del Caribe).
+
+Campos propios de estas altas — con una diferencia clave frente a los de la
+regla de almacenamiento: `e` no se asigna a mano, se **deriva** de la regla
+misma, porque 227 códigos no se pueden asignar uno por uno y porque ya se
+sabe cuál es la empresa (es literalmente lo que la regla filtra):
+
+| Campo | Valor | Por qué |
+|---|---|---|
+| `e` | `UNERGY` | Derivado de la regla, deliberadamente no `GMAIL`: repetir ese valor partido no resuelve la ambigüedad que motivó la regla. **Nunca** sale de `EMPRESAS_ALTAS` — ese diccionario sigue siendo exclusivo de `es_alta`. |
+| `se` | vacío | No tienen seguimiento en el sheet de ECS. |
+| `p` | vacío | Sin nombre de proyecto interno. |
+| `un` | `true` | Sí son de Unergy (a diferencia de las altas de almacenamiento, que llevan `un = false`). |
+| `b` | batch de la corrida | Igual que las altas de almacenamiento. |
+
+Con esta adenda el radar pasa de **1.589** a **1.816** registros.
+
 ### Codificación verificada a escala
 
 Sobre las 10.640 solicitudes, `TIENE_ALMACENAMIENTO` solo toma los valores `1` y
@@ -254,6 +291,8 @@ regla. Se reportan, no se interpretan.
 4. **Arreglar `DEPT_MAP`** para `EL PI¿ON` (ver abajo).
 5. **No incorporar el resto del universo air-e.** Los 5 códigos del sheet, los
    312 residenciales con almacenamiento y el caso `21489` quedan en el reporte.
+6. **Adenda (misma fecha, ver arriba):** agregar los 227 registros de cliente
+   Unergy desde 2026-01-01. Total: **1.816**.
 
 ### El municipio que rompe la clasificación por departamento
 
@@ -327,8 +366,11 @@ Llave: `c` (`external_code`).
   forma destacada. No se elimina. Con la ventana corregida esto debe dar 0; si da
   más, hay un problema en la extracción y hay que investigarlo antes de confiar
   en el resultado.
-- **Altas por la regla de almacenamiento** → `al = true` y `tg` que empieza por
-  `GD`, con los campos propios asignados abajo.
+- **Altas por la regla de almacenamiento (`es_alta`)** → `al = true` y `tg`
+  que empieza por `GD`, con `e` asignado a mano en `EMPRESAS_ALTAS`.
+- **Altas por la regla de cliente Unergy (`es_alta_unergy`, adenda)** → `cl`
+  contiene `unergy` y `f >= 2026-01-01`, con `e = UNERGY` derivado de la
+  regla, nunca de `EMPRESAS_ALTAS`. Ver "Segunda regla de inclusión" arriba.
 - **Ningún registro se elimina, nunca.**
 
 ### Los campos propios de las altas
@@ -376,9 +418,10 @@ no 7 como decía una versión anterior de este spec: dos viven en la capa de red
 
 ### En `_valida_guardas` (`scripts/merge.py`)
 
-3. **Conteo.** Si el resultado tiene menos de 1.589 registros, aborta.
+3. **Conteo.** Si el resultado tiene menos de 1.816 registros (piso ajustado
+   con la adenda de cliente Unergy; era 1.589 antes de esa adenda), aborta.
 4. **No eliminación.** Ningún registro puede desaparecer entre `actuales` y la
-   salida fusionada, sin importar cuánto crezca `DATA` más allá de 1.589 (el
+   salida fusionada, sin importar cuánto crezca `DATA` más allá de 1.816 (el
    piso estático de la guarda de conteo se queda corto si eso pasa). Es una
    invariante directa e independiente de esa guarda, no alcanzable hoy a
    través de la API pública de `fusionar`, pero defensiva ante un refactor
@@ -414,8 +457,11 @@ no 7 como decía una versión anterior de este spec: dos viven en la capa de red
 ### En `fusionar`
 
 10. **Empresa asignada para un alta.** Si un código cumple la regla de
-    inclusión (`GD` o `AG ` con almacenamiento) y no tiene empresa asignada en
-    `EMPRESAS_ALTAS`, aborta y pide la asignación a mano. No inventa el valor.
+    inclusión por almacenamiento (`GD` o `AG ` con almacenamiento) y no tiene
+    empresa asignada en `EMPRESAS_ALTAS`, aborta y pide la asignación a mano.
+    No inventa el valor. **No aplica** a las altas de la regla de cliente
+    Unergy: esas derivan `e = UNERGY` de la regla misma y nunca consultan
+    `EMPRESAS_ALTAS`.
 
 El umbral del 5% no necesita excepción para la corrida inicial: la deriva medida
 es 0. Se registró la duda porque el diseño original suponía que esta corrida era
@@ -510,8 +556,10 @@ caso mejor.
   los demás filtros; que `se` vacío se renderice `—`; que la tabla ordene por
   capacidad descendente y muestre el estado vacío; que `GECELCA` aparezca en el
   filtro de empresas.
-- **Post-build**: reabrir `index.html`, reparsear el `DATA`, verificar 1.589
-  registros y contrastar los goldens. Si no queda parseable, el build falla.
+- **Post-build**: reabrir `index.html`, reparsear el `DATA`, verificar el
+  conteo esperado (1.589 antes de la adenda de cliente Unergy, 1.816 desde
+  esa corrida) y contrastar los goldens. Si no queda parseable, el build
+  falla.
 - **Revisión humana del reporte de cambios** antes de commitear y desplegar.
 
 ## Entregables
@@ -520,8 +568,9 @@ caso mejor.
   `inject.py`, `build_data.py` y sus tests
 - `data/snapshots/aire-2026-09-10.json` (proyección slim, 10.640 registros)
 - `data/reports/cambios-2026-09-10.md`
-- `index.html` con 1.589 registros validados contra air-e, campos de
-  almacenamiento, filtro en el sidebar, tabla en Análisis y `DEPT_MAP` corregido
+- `index.html` con 1.816 registros (1.589 validados contra air-e más 227 de
+  la adenda de cliente Unergy), campos de almacenamiento, filtro en el
+  sidebar, tabla en Análisis y `DEPT_MAP` corregido
 - Reportes, todos como agregados dentro de `data/reports/cambios-<fecha>.md`
   (nunca como listado fila por fila): el universo air-e no incorporado por
   tipo/estado/mes (sección "Universo air-e no incorporado"); los 312
