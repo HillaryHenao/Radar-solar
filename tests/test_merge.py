@@ -7,6 +7,7 @@ from scripts.merge import (
     fusionar,
     render_reporte,
 )
+from scripts.merge import _es_cliente_unergy
 
 ESTADOS = {"Estudio solicitud", "Pendiente documento", "Revisión documento", "De Baja"}
 MUNICIPIOS = {"ARACATACA", "FONSECA", "CIENAGA", "BARRANQUILLA"}
@@ -52,6 +53,31 @@ def test_preserva_los_campos_propios_de_la_bd():
         [_actual()],
         [_snap(e="WRONG", se="X", p="Y", un=True, b="sept99")],
     )
+    fila = filas[0]
+    assert fila["e"] == "ACME"
+    assert fila["se"] == "ECS en proceso"
+    assert fila["p"] == "PROY_X"
+    assert fila["un"] is False
+    assert fila["b"] == "sept1"
+
+
+def test_registro_existente_que_pareceria_alta_unergy_conserva_sus_campos_propios():
+    # Regresion para la invariante "nunca se re-clasifica un registro
+    # existente": planta un actual cuyo cl/f harian match con
+    # es_alta_unergy si fuera nuevo (cliente Unergy, fecha 2026), y confirma
+    # que como YA esta presente, pasa por la rama de fusion (no por la de
+    # altas) y sus campos propios llegan intactos, no recalculados como
+    # e=UNERGY/un=True. El bucle de fusion lo garantiza estructuralmente
+    # (solo mira `snapshot` para altas cuando el codigo no esta en
+    # `presentes`), pero ese hecho no era evidente leyendo solo los tests.
+    actual = _actual(
+        c="1", e="ACME", cl="Unergy Energía Digital S.A.S", p="PROY_X",
+        se="ECS en proceso", un=False, b="sept1",
+    )
+    fresco = _snap(c="1", cl="Unergy Energía Digital S.A.S", f="2026-03-01 00:00")
+    assert es_alta_unergy(fresco) is True  # si fuera nuevo, calificaria
+
+    filas, _ = _fusionar([actual], [fresco])
     fila = filas[0]
     assert fila["e"] == "ACME"
     assert fila["se"] == "ECS en proceso"
@@ -178,6 +204,16 @@ def test_es_alta_unergy_es_insensible_a_mayusculas():
     ) is True
 
 
+def test_es_alta_unergy_no_hace_match_de_substring_dentro_de_otra_palabra():
+    # "unergy" como substring de un nombre mas largo no debe contar: el
+    # cliente real es otro, no Unergy. `\bunergy\b` exige que sea una
+    # palabra completa; un `in` sin anclar haria match aqui por error.
+    assert es_alta_unergy(
+        {"cl": "Grupo Munergystore S.A.S", "f": "2026-05-01 00:00"}
+    ) is False
+    assert _es_cliente_unergy("Grupo Munergystore S.A.S") is False
+
+
 def test_incorpora_alta_unergy_con_sus_campos_propios():
     # A diferencia de la alta por almacenamiento, esta no pasa por
     # EMPRESAS_ALTAS: `tg` es AGPE (la regla de almacenamiento la excluye) y
@@ -236,6 +272,29 @@ def test_reglas_de_almacenamiento_y_de_cliente_unergy_coexisten(monkeypatch):
     fila_unergy = next(f for f in filas if f["c"] == "30003")
     assert fila_gecelca["e"] == "GECELCA" and fila_gecelca["un"] is False
     assert fila_unergy["e"] == "UNERGY" and fila_unergy["un"] is True
+
+
+def test_registro_que_cumple_ambas_reglas_se_incorpora_como_unergy_una_sola_vez():
+    # El caso que importaba corregir: un proyecto grande (GD, con
+    # almacenamiento -cumple es_alta) que ademas es cliente Unergy desde 2026
+    # (cumple es_alta_unergy). Con un if/elif por orden de regla, es_alta
+    # ganaba y el registro perdia un=True/e=UNERGY y exigia una entrada en
+    # EMPRESAS_ALTAS que no tiene sentido para un cliente ya identificado.
+    # No se toca EMPRESAS_ALTAS: si esto fallara pidiendo una entrada ahi,
+    # la regresion volvio.
+    ambas = _snap(
+        c="30004", cl="Unergy Energía Digital S.A.S", f="2026-04-01 00:00",
+        al=True, ak=500.0, tg="GD menor igual 0.1MVA",
+    )
+    filas, informe = _fusionar([_actual()], [_snap(), ambas])
+
+    coincidencias = [f for f in filas if f["c"] == "30004"]
+    assert len(coincidencias) == 1
+    nueva = coincidencias[0]
+    assert nueva["un"] is True
+    assert nueva["e"] == "UNERGY"
+    assert informe["altas_unergy"] == ["30004"]
+    assert informe["altas"] == []
 
 
 def test_incorpora_el_alta_con_sus_campos_propios(monkeypatch):

@@ -6,6 +6,7 @@ bugs de verdad, asi que se testea completa con fixtures.
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from datetime import date
 
@@ -43,14 +44,16 @@ TOPE_SIN_CONTRAPARTE = 3
 LAT_MIN, LAT_MAX = 9.0, 12.6
 LON_MIN, LON_MAX = -76.0, -71.5
 
-# Empresa de cada alta de la regla de almacenamiento (`es_alta`). Se asigna a
-# mano: son pocas, `e` alimenta el filtro y los rankings, y una heuristica
-# sobre NOMBRE_CLI produciria basura. Este mecanismo es exclusivo de
-# `es_alta`: la regla de cliente Unergy (`es_alta_unergy`, abajo) NUNCA
-# consulta este diccionario. Son 227 codigos -no "pocas"- y su empresa ya se
-# conoce de antemano porque la regla misma lo dice: no hay nada que asignar
-# a mano, y si se enruta por aca el build fallaria pidiendo 227 asignaciones
-# que no tienen sentido.
+# Empresa de cada alta que no es de cliente Unergy. Se asigna a mano: son
+# pocas, `e` alimenta el filtro y los rankings, y una heuristica sobre
+# NOMBRE_CLI produciria basura. Este mecanismo aplica solo cuando el cliente
+# del registro NO es Unergy: una alta de cliente Unergy -sin importar si
+# entra por `es_alta_unergy` o porque ademas cumple `es_alta`- nunca consulta
+# este diccionario, porque `un`/`e` se deciden por identidad de cliente, no
+# por que regla disparo la incorporacion (ver `fusionar`). Son 227 codigos
+# -no "pocas"- y su empresa ya se conoce de antemano porque es literalmente
+# el cliente: no hay nada que asignar a mano, y si se enrutaran por aca el
+# build fallaria pidiendo 227 asignaciones que no tienen sentido.
 EMPRESAS_ALTAS: dict[str, str] = {
     "25857": "GECELCA",
     "22637": "GECELCA",
@@ -67,6 +70,8 @@ EMPRESA_UNERGY = "UNERGY"
 # cumpla `es_alta`. Ver `es_alta_unergy` para el porque del ancla "desde".
 UNERGY_DESDE = "2026-01-01"
 
+# 1.589 existentes + 227 altas de cliente Unergy desde 2026 (ver
+# es_alta_unergy y docs/notas/2026-09-10-pendiente-filtro-cliente.md).
 TOTAL_MINIMO = 1816
 UMBRAL_DERIVA = 0.05
 BATCH_ALTAS = "sept10"
@@ -93,6 +98,27 @@ def es_alta(fila: dict) -> bool:
     return fila.get("al") is True and (tg.startswith("GD") or tg.startswith("AG "))
 
 
+_UNERGY_RE = re.compile(r"\bunergy\b", re.IGNORECASE)
+
+
+def _es_cliente_unergy(cliente: str) -> bool:
+    """Prueba de identidad: ¿este `cliente` (`cl`) es Unergy?
+
+    Regex con limite de palabra (`\\b`), no substring: `"unergy" in x.lower()`
+    haria match con cualquier nombre que contenga esas letras en cualquier
+    parte (p. ej. un cliente como "Grupo Munergystore S.A.S" no es Unergy,
+    pero contiene la subcadena). `\\bunergy\\b` exige que "unergy" sea una
+    palabra completa en el nombre.
+
+    Extraida como predicado propio porque dos cosas distintas en `fusionar`
+    la necesitan: por que se incorpora un registro (`es_alta_unergy`, abajo)
+    y de quien es un registro ya incorporado por cualquier via (`un`/`e` en
+    el bucle de altas). Antes vivian mezcladas en una sola condicion dentro
+    de `es_alta_unergy`.
+    """
+    return bool(_UNERGY_RE.search(cliente))
+
+
 def es_alta_unergy(fila: dict) -> bool:
     """Segunda regla de inclusion: cliente Unergy con solicitud desde 2026.
 
@@ -109,22 +135,25 @@ def es_alta_unergy(fila: dict) -> bool:
     porque `f` siempre llega en formato `YYYY-MM-DD HH:mm` (orden lexico ==
     orden cronologico para ese formato).
 
-    Deliberadamente independiente de `es_alta`: una solicitud puede cumplir
-    esta regla sin cumplir la de almacenamiento (de hecho, los 227 conocidos
-    son todos `AGPE menor igual 1MVA y mayor 0.1MVA`, la clase que `es_alta`
-    excluye).
+    No es "independiente" de `es_alta` en el sentido de excluirse mutuamente:
+    una solicitud puede cumplir esta regla sin cumplir la de almacenamiento
+    (de hecho, los 227 conocidos son todos `AGPE menor igual 1MVA y mayor
+    0.1MVA`, la clase que `es_alta` excluye), pero tambien puede cumplir
+    ambas a la vez (un proyecto grande con bateria que ademas es cliente
+    Unergy 2026). `fusionar` decide la incorporacion con un `or` de las dos
+    reglas, precisamente para no depender de cual se evalua primero.
     """
-    cliente = str(fila.get("cl", ""))
     fecha = str(fila.get("f", ""))
-    return "unergy" in cliente.lower() and fecha >= UNERGY_DESDE
+    return _es_cliente_unergy(str(fila.get("cl", ""))) and fecha >= UNERGY_DESDE
 
 
 def _nueva_fila(fila: dict, *, empresa: str, un: bool, batch: str) -> dict:
     """Arma una fila nueva (alta) con los campos de air-e mas los propios.
 
-    Compartida por las dos rutas de alta en `fusionar`: `es_alta` (empresa
-    manual, `un=False`) y `es_alta_unergy` (empresa derivada, `un=True`). `se`
-    y `p` van vacios en ambas: estos registros no estan en el sheet de ECS.
+    Compartida por las dos formas de alta en `fusionar`: cliente Unergy
+    (empresa derivada `EMPRESA_UNERGY`, `un=True`) y todo lo demas (empresa
+    manual de `EMPRESAS_ALTAS`, `un=False`). `se` y `p` van vacios en ambas:
+    estos registros no estan en el sheet de ECS.
     """
     nueva = {campo: fila[campo] for campo in CAMPOS_DE_AIRE}
     nueva.update(
@@ -299,9 +328,33 @@ def fusionar(
     for fila in snapshot:
         if fila["c"] in presentes:
             continue
-        if es_alta(fila):
-            # Ruta manual: EMPRESAS_ALTAS aplica SOLO aqui. `es_alta_unergy`
-            # (elif de abajo) nunca pasa por este camino ni por su guarda.
+
+        # La incorporacion se decide con un `or`: no importa cual de las dos
+        # reglas dispara, ni en que orden se evaluen. Un `if/elif` aqui
+        # (version anterior) le daba prioridad accidental a `es_alta`: un
+        # registro que cumple ambas -grande, con bateria, Y cliente Unergy
+        # 2026- caia en la rama manual, perdia `un=True`/`e="UNERGY"` y podia
+        # abortar el build pidiendo una entrada en EMPRESAS_ALTAS que no
+        # tiene sentido para un cliente ya identificado.
+        if not (es_alta(fila) or es_alta_unergy(fila)):
+            if fila.get("al") is True:
+                candidatos_excluidos.append(
+                    {"c": fila["c"], "tg": fila["tg"], "ak": fila["ak"],
+                     "ci": fila["ci"], "cl": fila["cl"], "pac": fila["pac"]}
+                )
+            continue
+
+        # Con la incorporacion decidida, `un`/`e` son una pregunta aparte:
+        # de quien es el registro, sin importar por que regla entro.
+        if _es_cliente_unergy(str(fila.get("cl", ""))):
+            salida.append(
+                _nueva_fila(fila, empresa=EMPRESA_UNERGY, un=True, batch=batch)
+            )
+            altas_unergy.append(fila["c"])
+        else:
+            # EMPRESAS_ALTAS aplica solo aqui: un cliente Unergy nunca llega
+            # a esta rama, sin importar si entro por `es_alta`,
+            # `es_alta_unergy` o ambas.
             empresa = EMPRESAS_ALTAS.get(fila["c"])
             if not empresa:
                 raise MergeError(
@@ -312,20 +365,6 @@ def fusionar(
                 )
             salida.append(_nueva_fila(fila, empresa=empresa, un=False, batch=batch))
             altas.append(fila["c"])
-        elif es_alta_unergy(fila):
-            # Ruta derivada: la empresa sale de la regla misma (EMPRESA_UNERGY
-            # = "UNERGY"), no de EMPRESAS_ALTAS. Ese mecanismo manual no
-            # escala a estos 227 codigos y aqui no hace falta: ya se sabe cual
-            # es la empresa porque es literalmente lo que la regla filtra.
-            salida.append(
-                _nueva_fila(fila, empresa=EMPRESA_UNERGY, un=True, batch=batch)
-            )
-            altas_unergy.append(fila["c"])
-        elif fila.get("al") is True:
-            candidatos_excluidos.append(
-                {"c": fila["c"], "tg": fila["tg"], "ak": fila["ak"],
-                 "ci": fila["ci"], "cl": fila["cl"], "pac": fila["pac"]}
-            )
 
     # El denominador correcto es la poblacion comparada (actuales con
     # contraparte en el snapshot), no todos los actuales: si air-e devuelve
