@@ -276,27 +276,40 @@ th.map-col, td.map-col{ width:1%; white-space:nowrap; text-align:center; }
       <div class="chips" id="estadoChips"></div>
     </div>
     <div class="section">
-      <p class="section-label">Filtrar por empresa / ciudad</p>
-      <div class="field msel" id="empresaMsel">
-        <button type="button" class="msel-btn" id="empresaMselBtn"><span class="lbl">Todas las empresas</span><span class="chev">▾</span></button>
-        <div class="msel-panel" id="empresaMselPanel" hidden>
-          <input type="text" class="msel-search" id="empresaMselSearch" placeholder="Buscar empresa…" autocomplete="off">
-          <div class="msel-actions">
-            <button type="button" class="linklike" data-msel="empresa" data-action="all">Todas</button>
-            <button type="button" class="linklike" data-msel="empresa" data-action="none">Ninguna</button>
+      <p class="section-label">Filtrar por empresa / ciudad / cliente</p>
+      <div class="row2">
+        <div class="field msel" id="empresaMsel">
+          <button type="button" class="msel-btn" id="empresaMselBtn"><span class="lbl">Todas las empresas</span><span class="chev">▾</span></button>
+          <div class="msel-panel" id="empresaMselPanel" hidden>
+            <input type="text" class="msel-search" id="empresaMselSearch" placeholder="Buscar empresa…" autocomplete="off">
+            <div class="msel-actions">
+              <button type="button" class="linklike" data-msel="empresa" data-action="all">Todas</button>
+              <button type="button" class="linklike" data-msel="empresa" data-action="none">Ninguna</button>
+            </div>
+            <div class="msel-list" id="empresaMselList"></div>
           </div>
-          <div class="msel-list" id="empresaMselList"></div>
+        </div>
+        <div class="field msel" id="ciudadMsel">
+          <button type="button" class="msel-btn" id="ciudadMselBtn"><span class="lbl">Todos los municipios</span><span class="chev">▾</span></button>
+          <div class="msel-panel" id="ciudadMselPanel" hidden>
+            <input type="text" class="msel-search" id="ciudadMselSearch" placeholder="Buscar municipio…" autocomplete="off">
+            <div class="msel-actions">
+              <button type="button" class="linklike" data-msel="ciudad" data-action="all">Todas</button>
+              <button type="button" class="linklike" data-msel="ciudad" data-action="none">Ninguna</button>
+            </div>
+            <div class="msel-list" id="ciudadMselList"></div>
+          </div>
         </div>
       </div>
-      <div class="field msel" id="ciudadMsel">
-        <button type="button" class="msel-btn" id="ciudadMselBtn"><span class="lbl">Todos los municipios</span><span class="chev">▾</span></button>
-        <div class="msel-panel" id="ciudadMselPanel" hidden>
-          <input type="text" class="msel-search" id="ciudadMselSearch" placeholder="Buscar municipio…" autocomplete="off">
+      <div class="field msel" id="clienteMsel" style="margin-top:8px;">
+        <button type="button" class="msel-btn" id="clienteMselBtn"><span class="lbl">Todos los clientes</span><span class="chev">▾</span></button>
+        <div class="msel-panel" id="clienteMselPanel" hidden>
+          <input type="text" class="msel-search" id="clienteMselSearch" placeholder="Buscar cliente…" autocomplete="off">
           <div class="msel-actions">
-            <button type="button" class="linklike" data-msel="ciudad" data-action="all">Todas</button>
-            <button type="button" class="linklike" data-msel="ciudad" data-action="none">Ninguna</button>
+            <button type="button" class="linklike" data-msel="cliente" data-action="all">Todas</button>
+            <button type="button" class="linklike" data-msel="cliente" data-action="none">Ninguna</button>
           </div>
-          <div class="msel-list" id="ciudadMselList"></div>
+          <div class="msel-list" id="clienteMselList"></div>
         </div>
       </div>
     </div>
@@ -501,12 +514,13 @@ const allMarkers = DATA.map(d=>{
   return m;
 });
 
-const state = { search:'', estados:new Set(ESTADO_ORDER), empresas:new Set(), ciudades:new Set(), anio:'', mes:'', soloAlmacenamiento:false, selected:null };
+const state = { search:'', estados:new Set(ESTADO_ORDER), empresas:new Set(), ciudades:new Set(), clientes:new Set(), anio:'', mes:'', soloAlmacenamiento:false, selected:null };
 // Everything except the estado toggles themselves - used both to filter and,
 // separately, to compute "how many would show per estado" for the chip counts.
 function passesOtherFilters(d){
   if(state.empresas.size && !state.empresas.has(d.e)) return false;
   if(state.ciudades.size && !state.ciudades.has(d.ci)) return false;
+  if(state.clientes.size && !state.clientes.has(d.cl)) return false;
   if(state.anio && d.f.slice(0,4)!==state.anio) return false;
   if(state.mes && d.f.slice(5,7)!==state.mes) return false;
   if(state.soloAlmacenamiento && d.al !== true) return false;
@@ -1065,15 +1079,17 @@ function createMultiSelect(cfg){
 }
 document.addEventListener('click', ()=>{ document.querySelectorAll('.msel-panel').forEach(p=>p.hidden=true); });
 
-let empresaMS, ciudadMS;
+let empresaMS, ciudadMS, clienteMS;
 function buildDatalists(){
-  const empresaCounts = {}, ciudadCounts = {};
+  const empresaCounts = {}, ciudadCounts = {}, clienteCounts = {};
   DATA.forEach(d=>{
     if(d.e) empresaCounts[d.e]=(empresaCounts[d.e]||0)+1;
     if(d.ci) ciudadCounts[d.ci]=(ciudadCounts[d.ci]||0)+1;
+    if(d.cl) clienteCounts[d.cl]=(clienteCounts[d.cl]||0)+1;
   });
   const empresaOptions = Object.entries(empresaCounts).sort((a,b)=>a[0].localeCompare(b[0]));
   const ciudadOptions = Object.entries(ciudadCounts).sort((a,b)=>a[0].localeCompare(b[0]));
+  const clienteOptions = Object.entries(clienteCounts).sort((a,b)=>a[0].localeCompare(b[0]));
   const anios = Array.from(new Set(DATA.map(d=>d.f.slice(0,4)).filter(Boolean))).sort();
 
   empresaMS = createMultiSelect({
@@ -1087,6 +1103,12 @@ function buildDatalists(){
     btnEl:document.getElementById('ciudadMselBtn'), panelEl:document.getElementById('ciudadMselPanel'),
     listEl:document.getElementById('ciudadMselList'), searchEl:document.getElementById('ciudadMselSearch'),
     allLabel:'Todos los municipios', onChange:refresh,
+  });
+  clienteMS = createMultiSelect({
+    key:'cliente', options:clienteOptions, selectedSet:state.clientes,
+    btnEl:document.getElementById('clienteMselBtn'), panelEl:document.getElementById('clienteMselPanel'),
+    listEl:document.getElementById('clienteMselList'), searchEl:document.getElementById('clienteMselSearch'),
+    allLabel:'Todos los clientes', onChange:refresh,
   });
 
   const anioBox = document.getElementById('anioBox');
@@ -1115,8 +1137,8 @@ document.getElementById('clearFilters').addEventListener('click', ()=>{
   document.getElementById('mesBox').value='';
   state.estados = new Set(ESTADO_ORDER);
   document.querySelectorAll('.chip').forEach(c=>c.classList.add('on'));
-  state.empresas.clear(); state.ciudades.clear();
-  empresaMS.updateBtnLabel(); ciudadMS.updateBtnLabel();
+  state.empresas.clear(); state.ciudades.clear(); state.clientes.clear();
+  empresaMS.updateBtnLabel(); ciudadMS.updateBtnLabel(); clienteMS.updateBtnLabel();
   refresh();
 });
 

@@ -181,3 +181,49 @@ def test_render_list_del_sidebar_sigue_navegando_al_seleccionar(html):
     inicio = html.index("function renderList(filtered){")
     cuerpo = html[inicio : html.index("function buildEstadoChips(){")]
     assert "selectPoint(d)" in cuerpo
+
+
+# ---------- filtro de cliente (cl), junto a empresa y ciudad ----------
+
+def test_el_state_tiene_el_set_de_clientes(html):
+    assert "clientes:newSet()" in html.replace(" ", "")
+
+
+def test_passes_other_filters_considera_el_cliente(html):
+    inicio = html.index("function passesOtherFilters")
+    cuerpo = html[inicio : html.index("function passesFilter")]
+    assert "state.clientes" in cuerpo
+    assert "d.cl" in cuerpo
+
+
+def test_existe_el_control_del_filtro_de_cliente(html):
+    assert 'id="clienteMsel"' in html
+    assert 'id="clienteMselBtn"' in html
+    assert 'id="clienteMselPanel"' in html
+    assert 'id="clienteMselSearch"' in html
+    assert 'id="clienteMselList"' in html
+    assert 'data-msel="cliente"' in html
+
+
+def test_la_seccion_de_filtros_nombra_los_tres_campos(html):
+    assert "Filtrar por empresa / ciudad / cliente" in html
+
+
+def test_clear_filters_resetea_el_cliente(html):
+    inicio = html.index("document.getElementById('clearFilters')")
+    cuerpo = html[inicio : inicio + 900]
+    assert "state.clientes.clear()" in cuerpo
+    assert "clienteMS.updateBtnLabel()" in cuerpo
+
+
+def test_build_datalists_puebla_las_opciones_de_cliente_desde_data(html):
+    inicio = html.index("function buildDatalists(){")
+    cuerpo = html[inicio : html.index("let searchTimer=null;")]
+    # Mismo patron que empresa/ciudad: contar por d.cl, ordenar alfabeticamente
+    # y pasarle las opciones a un createMultiSelect propio.
+    assert "clienteCounts" in cuerpo
+    assert "if(d.cl)clienteCounts[d.cl]" in cuerpo.replace(" ", "")
+    assert "clienteOptions" in cuerpo
+    assert "clienteOptions.sort" in cuerpo.replace(" ", "") or "clienteOptions=Object.entries(clienteCounts).sort" in cuerpo.replace(" ", "")
+    assert "clienteMS = createMultiSelect(" in cuerpo
+    assert "selectedSet:state.clientes" in cuerpo.replace(" ", "")
