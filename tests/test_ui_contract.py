@@ -126,7 +126,7 @@ def test_existe_el_helper_compartido_wire_row_actions(html):
 
 def test_wire_row_actions_copia_el_codigo_crudo_al_portapapeles(html):
     inicio = html.index("function wireRowActions(tbody)")
-    cuerpo = html[inicio : html.index("function openRankDetail(title, scopeLabel, rows){")]
+    cuerpo = html[inicio : html.index("function openRankDetail(title, scopeLabel, rows, dimension){")]
     # El portapapeles recibe el codigo crudo (sin '#'), no el texto visible de la celda.
     assert "navigator.clipboard.writeText(code)" in cuerpo
     # La promesa puede rechazar (permisos, foco); debe manejarse, no fallar en silencio.
@@ -137,7 +137,7 @@ def test_wire_row_actions_copia_el_codigo_crudo_al_portapapeles(html):
 
 
 def test_open_rank_detail_ya_no_navega_al_mapa_desde_la_fila(html):
-    inicio = html.index("function openRankDetail(title, scopeLabel, rows){")
+    inicio = html.index("function openRankDetail(title, scopeLabel, rows, dimension){")
     cuerpo = html[inicio : html.index("function closeRankDetail()")]
     assert "setView('map')" not in cuerpo
     assert "wireRowActions(body)" in cuerpo

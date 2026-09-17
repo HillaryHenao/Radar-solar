@@ -153,6 +153,9 @@ input:focus-visible, select:focus-visible, button:focus-visible, .chip:focus-vis
 .rank-modal-head .section-note{ margin:0; }
 .rank-modal-head .detail-close{ position:static; flex:none; }
 .rank-modal-scroll{ flex:1; overflow:auto; border:1px solid var(--border); border-radius:10px; }
+.rank-modal-chart{ border:1px solid var(--border); border-radius:10px; padding:12px 14px; margin-bottom:12px; background:var(--surface-2); }
+.rank-modal-chart[hidden]{ display:none; }
+.rank-modal-chart .insight-title{ margin-bottom:10px; }
 .changes-scroll{ border:1px solid var(--border); border-radius:10px; overflow:auto; max-height:320px; }
 .changes-table{ width:100%; border-collapse:collapse; font-size:.82rem; }
 .changes-table thead th{
@@ -441,10 +444,14 @@ th.map-col, td.map-col{ width:1%; white-space:nowrap; text-align:center; }
       </div>
       <button class="detail-close" id="rankModalClose" aria-label="Cerrar">&times;</button>
     </div>
+    <div class="rank-modal-chart" id="rankModalChart" hidden>
+      <p class="insight-title">Empresas en este municipio</p>
+      <div class="insight-list tall" id="rankModalChartList"></div>
+    </div>
     <div class="table-scroll rank-modal-scroll">
       <table class="changes-table">
         <thead>
-          <tr><th>Código</th><th>Municipio</th><th>Departamento</th><th>Estado air-e</th><th>Fecha solicitud</th><th class="map-col">Mapa</th></tr>
+          <tr><th>Código</th><th>Municipio</th><th>Departamento</th><th>Estado air-e</th><th>Fecha solicitud</th><th>Potencia AC (kW)</th><th class="map-col">Mapa</th></tr>
         </thead>
         <tbody id="rankModalBody"></tbody>
       </table>
@@ -649,10 +656,27 @@ function wireRowActions(tbody){
     });
   });
 }
-function openRankDetail(title, scopeLabel, rows){
+function openRankDetail(title, scopeLabel, rows, dimension){
   document.getElementById('rankModalTitle').textContent = title;
   document.getElementById('rankModalSubtitle').textContent =
     (scopeLabel ? scopeLabel+' · ' : '')+rows.length.toLocaleString('es-CO')+' solicitud'+(rows.length===1?'':'es');
+
+  const chartWrap = document.getElementById('rankModalChart');
+  if(dimension === 'municipio'){
+    const porEmpresa = rankBy(rows, d=>d.e);
+    const max = porEmpresa.length ? porEmpresa[0][1] : 0;
+    document.getElementById('rankModalChartList').innerHTML = porEmpresa.map(([name,n])=>
+      '<div class="insight-row">'+
+        '<span class="insight-name" title="'+escAttr(name)+'">'+name+'</span>'+
+        '<span class="insight-bar-wrap"><span class="insight-bar" style="width:'+(max?n/max*100:0)+'%"></span></span>'+
+        '<span class="insight-count">'+n+'</span>'+
+      '</div>'
+    ).join('') || '<p class="insight-empty">Sin datos.</p>';
+    chartWrap.hidden = false;
+  } else {
+    chartWrap.hidden = true;
+  }
+
   const sorted = [...rows].sort((a,b)=> a.f < b.f ? 1 : a.f > b.f ? -1 : 0);
   const body = document.getElementById('rankModalBody');
   body.innerHTML = sorted.map(d=>
@@ -662,6 +686,7 @@ function openRankDetail(title, scopeLabel, rows){
       '<td>'+(DEPT_MAP[d.ci]||'Sin clasificar')+'</td>'+
       '<td><span class="st-dot" style="background:'+estadoColor(d.es)+'"></span>'+d.es+'</td>'+
       '<td class="mono">'+(d.f||'—')+'</td>'+
+      '<td class="mono">'+(d.pac ? Number(d.pac).toLocaleString('es-CO') : '—')+'</td>'+
       '<td class="map-col"><button type="button" class="map-btn" title="Ver esta solicitud en el mapa" aria-label="Ver esta solicitud en el mapa">Mapa</button></td>'+
     '</tr>'
   ).join('');
@@ -675,7 +700,7 @@ document.getElementById('rankModalBackdrop').addEventListener('click', (e)=>{
 });
 document.addEventListener('keydown', (e)=>{ if(e.key==='Escape') closeRankDetail(); });
 function escAttr(s){ return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;'); }
-function renderInsightList(elId, entries, rows, keyFn, scopeLabel){
+function renderInsightList(elId, entries, rows, keyFn, scopeLabel, dimension){
   const el = document.getElementById(elId);
   const titleEl = el.previousElementSibling;
   if(titleEl && titleEl.classList.contains('insight-title')){
@@ -697,7 +722,7 @@ function renderInsightList(elId, entries, rows, keyFn, scopeLabel){
       rowEl.addEventListener('click', ()=>{
         const name = rowEl.dataset.name;
         const matches = rows.filter(d => (keyFn(d)||'Sin clasificar') === name);
-        openRankDetail(name, scopeLabel, matches);
+        openRankDetail(name, scopeLabel, matches, dimension);
       });
     });
   }
@@ -807,9 +832,9 @@ function renderAnalysis(){
     document.getElementById('cnt-y'+year).textContent =
       '('+rows.length.toLocaleString('es-CO')+' solicitud'+(rows.length===1?'':'es')+')';
     const scopeLabel = year + (year===latestYear && analysisState.month ? ' · '+(MESES.find(m=>m.startsWith(analysisState.month))||'').split(':')[1] : '');
-    renderInsightList('emp-y'+year, rankBy(rows, d=>d.e), rows, d=>d.e, scopeLabel);
-    renderInsightList('dep-y'+year, rankBy(rows, d=>DEPT_MAP[d.ci]||'Sin clasificar'), rows, d=>DEPT_MAP[d.ci]||'Sin clasificar', scopeLabel);
-    renderInsightList('mun-y'+year, rankBy(rows, d=>d.ci), rows, d=>d.ci, scopeLabel);
+    renderInsightList('emp-y'+year, rankBy(rows, d=>d.e), rows, d=>d.e, scopeLabel, 'empresa');
+    renderInsightList('dep-y'+year, rankBy(rows, d=>DEPT_MAP[d.ci]||'Sin clasificar'), rows, d=>DEPT_MAP[d.ci]||'Sin clasificar', scopeLabel, 'departamento');
+    renderInsightList('mun-y'+year, rankBy(rows, d=>d.ci), rows, d=>d.ci, scopeLabel, 'municipio');
   }
 
   const byCode = new Map(allVisible.map(d=>[d.c, d]));
