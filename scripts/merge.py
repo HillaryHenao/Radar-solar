@@ -70,6 +70,17 @@ EMPRESA_UNERGY = "UNERGY"
 # cumpla `es_alta`. Ver `es_alta_unergy` para el porque del ancla "desde".
 UNERGY_DESDE = "2026-01-01"
 
+# Rango de potencia AC (kW) para la regla de minigranjas GD: air-e agrupa
+# estas solicitudes en un cluster real just-bajo-1MW (990, 960, 999, 900,
+# 996, 1000 kW), no en un valor exacto. Ver `es_minigranja_gd`.
+MINIGRANJA_PAC_MIN = 900.0
+MINIGRANJA_PAC_MAX = 1100.0
+
+# Fecha desde la cual una minigranja GD se incorpora. A diferencia de
+# UNERGY_DESDE, este ancla es un pedido puntual (2026-09-17: "desde 2025
+# hasta la actualidad"), no una regla que se automantenga por diseno.
+MINIGRANJA_DESDE = "2025-01-01"
+
 # 1.589 existentes + 227 altas de cliente Unergy desde 2026 (ver
 # es_alta_unergy y docs/notas/2026-09-10-pendiente-filtro-cliente.md).
 TOTAL_MINIMO = 1816
@@ -145,6 +156,25 @@ def es_alta_unergy(fila: dict) -> bool:
     """
     fecha = str(fila.get("f", ""))
     return _es_cliente_unergy(str(fila.get("cl", ""))) and fecha >= UNERGY_DESDE
+
+
+def es_minigranja_gd(fila: dict) -> bool:
+    """Tercera regla de inclusion: minigranjas GD de ~1MW desde 2025.
+
+    "GD" (generador distribuido), nunca AG/AGPE, con potencia AC dentro del
+    cluster real donde air-e agrupa estas solicitudes (900-1100 kW: 990, 960,
+    999, 900, 996, 1000) y fecha de solicitud desde 2025-01-01. A diferencia
+    de `es_alta`, no exige almacenamiento: son proyectos de generacion pura a
+    escala de granja solar, no de red con bateria.
+    """
+    tg = str(fila.get("tg", ""))
+    fecha = str(fila.get("f", ""))
+    pac = fila.get("pac") or 0
+    return (
+        tg.startswith("GD")
+        and MINIGRANJA_PAC_MIN <= pac <= MINIGRANJA_PAC_MAX
+        and fecha >= MINIGRANJA_DESDE
+    )
 
 
 def _nueva_fila(fila: dict, *, empresa: str, un: bool, batch: str) -> dict:
@@ -324,19 +354,20 @@ def fusionar(
 
     altas: list[str] = []
     altas_unergy: list[str] = []
+    altas_minigranja: list[str] = []
     candidatos_excluidos: list[dict] = []
     for fila in snapshot:
         if fila["c"] in presentes:
             continue
 
-        # La incorporacion se decide con un `or`: no importa cual de las dos
-        # reglas dispara, ni en que orden se evaluen. Un `if/elif` aqui
-        # (version anterior) le daba prioridad accidental a `es_alta`: un
-        # registro que cumple ambas -grande, con bateria, Y cliente Unergy
-        # 2026- caia en la rama manual, perdia `un=True`/`e="UNERGY"` y podia
-        # abortar el build pidiendo una entrada en EMPRESAS_ALTAS que no
-        # tiene sentido para un cliente ya identificado.
-        if not (es_alta(fila) or es_alta_unergy(fila)):
+        # La incorporacion se decide con un `or`: no importa cual de las
+        # tres reglas dispara, ni en que orden se evaluen. Un `if/elif` aqui
+        # le daria prioridad accidental a una regla sobre otra: un registro
+        # que cumple varias -por ejemplo, GD grande con bateria Y cliente
+        # Unergy 2026- debe incorporarse una sola vez, por la rama que le
+        # corresponde segun identidad de cliente, no segun cual regla se
+        # evaluo primero.
+        if not (es_alta(fila) or es_alta_unergy(fila) or es_minigranja_gd(fila)):
             if fila.get("al") is True:
                 candidatos_excluidos.append(
                     {"c": fila["c"], "tg": fila["tg"], "ak": fila["ak"],
@@ -351,7 +382,7 @@ def fusionar(
                 _nueva_fila(fila, empresa=EMPRESA_UNERGY, un=True, batch=batch)
             )
             altas_unergy.append(fila["c"])
-        else:
+        elif es_alta(fila):
             # EMPRESAS_ALTAS aplica solo aqui: un cliente Unergy nunca llega
             # a esta rama, sin importar si entro por `es_alta`,
             # `es_alta_unergy` o ambas.
@@ -365,6 +396,15 @@ def fusionar(
                 )
             salida.append(_nueva_fila(fila, empresa=empresa, un=False, batch=batch))
             altas.append(fila["c"])
+        else:
+            # Solo entra por `es_minigranja_gd`: son ~2.400 desarrolladores
+            # distintos, cada uno dueno de su propia solicitud, sin
+            # intermediario que asignar a mano como en EMPRESAS_ALTAS. La
+            # empresa es el propio cliente que air-e ya reporta.
+            salida.append(
+                _nueva_fila(fila, empresa=fila.get("cl", ""), un=False, batch=batch)
+            )
+            altas_minigranja.append(fila["c"])
 
     # El denominador correcto es la poblacion comparada (actuales con
     # contraparte en el snapshot), no todos los actuales: si air-e devuelve
@@ -389,6 +429,7 @@ def fusionar(
         "cambios": cambios,
         "altas": altas,
         "altas_unergy": altas_unergy,
+        "altas_minigranja": altas_minigranja,
         "sin_contraparte": sin_contraparte,
         "deriva_estados": (estados_movidos / comparados) if comparados else 0.0,
         "candidatos_excluidos": candidatos_excluidos,
@@ -434,6 +475,8 @@ def render_reporte(informe: dict) -> str:
         f"- Altas por regla de almacenamiento: {len(informe['altas'])}",
         f"- Altas por cliente Unergy (desde 2026): "
         f"{len(informe.get('altas_unergy', []))}",
+        f"- Altas por minigranjas GD ~1MW (desde 2025): "
+        f"{len(informe.get('altas_minigranja', []))}",
         f"- Deriva de estados: **{informe['deriva_estados'] * 100:.2f}%** "
         f"(umbral {UMBRAL_DERIVA * 100:.0f}%)",
         "",
@@ -458,6 +501,25 @@ def render_reporte(informe: dict) -> str:
         )
         lineas.append("")
         lineas.append(", ".join(f"`{c}`" for c in altas_unergy))
+    else:
+        lineas.append("Ninguna.")
+    lineas.append("")
+
+    lineas += ["## Altas por minigranjas GD ~1MW (desde 2025)", ""]
+    altas_minigranja = informe.get("altas_minigranja", [])
+    if altas_minigranja:
+        lineas.append(
+            f"Se incorporaron **{len(altas_minigranja)}** registros: `tg` empieza "
+            f"con \"GD\", potencia AC entre {MINIGRANJA_PAC_MIN:g} y "
+            f"{MINIGRANJA_PAC_MAX:g} kW, fecha de solicitud desde "
+            f"{MINIGRANJA_DESDE}. Empresa derivada del propio cliente en cada una."
+        )
+        lineas.append("")
+        muestra = altas_minigranja[:40]
+        lineas.append(", ".join(f"`{c}`" for c in muestra))
+        if len(altas_minigranja) > 40:
+            lineas.append("")
+            lineas.append(f"Y {len(altas_minigranja) - 40} mas.")
     else:
         lineas.append("Ninguna.")
     lineas.append("")

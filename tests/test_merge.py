@@ -4,6 +4,7 @@ from scripts.merge import (
     MergeError,
     es_alta,
     es_alta_unergy,
+    es_minigranja_gd,
     fusionar,
     render_reporte,
 )
@@ -214,6 +215,44 @@ def test_es_alta_unergy_no_hace_match_de_substring_dentro_de_otra_palabra():
     assert _es_cliente_unergy("Grupo Munergystore S.A.S") is False
 
 
+def test_es_minigranja_gd_acepta_el_cluster_de_potencia_desde_2025():
+    assert es_minigranja_gd(
+        {"tg": "GD menor igual 0.1MVA", "pac": 990.0, "f": "2025-03-01 00:00"}
+    ) is True
+    assert es_minigranja_gd(
+        {"tg": "GD menor igual 0.1MVA", "pac": 900.0, "f": "2026-01-01 00:00"}
+    ) is True
+    assert es_minigranja_gd(
+        {"tg": "GD menor igual 0.1MVA", "pac": 1100.0, "f": "2025-01-01 00:00"}
+    ) is True
+
+
+def test_es_minigranja_gd_rechaza_fuera_del_rango_de_potencia():
+    assert es_minigranja_gd(
+        {"tg": "GD menor igual 0.1MVA", "pac": 899.9, "f": "2025-03-01 00:00"}
+    ) is False
+    assert es_minigranja_gd(
+        {"tg": "GD menor igual 0.1MVA", "pac": 1100.1, "f": "2025-03-01 00:00"}
+    ) is False
+
+
+def test_es_minigranja_gd_rechaza_fecha_anterior_a_2025():
+    assert es_minigranja_gd(
+        {"tg": "GD menor igual 0.1MVA", "pac": 1000.0, "f": "2024-12-31 23:59"}
+    ) is False
+
+
+def test_es_minigranja_gd_rechaza_ag_y_agpe():
+    # Solo generador distribuido: "AG " y "AGPE" son autogeneracion, no la
+    # clase que se pidio incorporar.
+    assert es_minigranja_gd(
+        {"tg": "AG menor igual 5MVA y mayor 1MVA", "pac": 1000.0, "f": "2025-06-01 00:00"}
+    ) is False
+    assert es_minigranja_gd(
+        {"tg": "AGPE menor igual 1MVA y mayor 0.1MVA", "pac": 1000.0, "f": "2025-06-01 00:00"}
+    ) is False
+
+
 def test_incorpora_alta_unergy_con_sus_campos_propios():
     # A diferencia de la alta por almacenamiento, esta no pasa por
     # EMPRESAS_ALTAS: `tg` es AGPE (la regla de almacenamiento la excluye) y
@@ -315,6 +354,78 @@ def test_incorpora_el_alta_con_sus_campos_propios(monkeypatch):
     # Un alta con una clave de menos o de mas rompe el JS en runtime, no en
     # build time: hay que fijarlo con un test.
     assert set(nueva) == set(filas[0])
+
+
+def test_incorpora_minigranja_con_empresa_derivada_del_cliente():
+    # A diferencia de la regla de almacenamiento, esta no exige EMPRESAS_ALTAS
+    # ni almacenamiento: la empresa es el propio `cl` que manda air-e.
+    minigranja = _snap(
+        c="40001", cl="Javier Oliveros", f="2025-06-01 00:00",
+        tg="GD menor igual 0.1MVA", pac=1000.0,
+    )
+    filas, informe = _fusionar([_actual()], [_snap(), minigranja])
+
+    nueva = next(f for f in filas if f["c"] == "40001")
+    assert nueva["e"] == "Javier Oliveros"
+    assert nueva["un"] is False
+    assert nueva["se"] == ""
+    assert nueva["p"] == ""
+    assert informe["altas_minigranja"] == ["40001"]
+    assert set(nueva) == set(filas[0])
+
+
+def test_minigranja_no_requiere_empresa_asignada_en_empresas_altas():
+    from scripts.merge import EMPRESAS_ALTAS
+
+    minigranja = _snap(
+        c="40002", cl="Persona Natural Cualquiera", f="2025-01-15 00:00",
+        tg="GD menor igual 0.1MVA", pac=960.0,
+    )
+    assert "40002" not in EMPRESAS_ALTAS
+
+    filas, informe = _fusionar([_actual()], [_snap(), minigranja])
+    assert informe["altas_minigranja"] == ["40002"]
+    assert next(f for f in filas if f["c"] == "40002")["e"] == (
+        "Persona Natural Cualquiera"
+    )
+
+
+def test_minigranja_con_almacenamiento_y_empresa_conocida_usa_empresas_altas(monkeypatch):
+    # Overlap real en los datos: un registro puede cumplir la regla de
+    # minigranja (GD, ~1MW, desde 2025) y ademas la de almacenamiento
+    # (es_alta). Cuando ya tiene empresa asignada a mano, esa asignacion debe
+    # ganar sobre el nombre del cliente, para no perder la curaduria manual.
+    from scripts import merge
+
+    monkeypatch.setitem(merge.EMPRESAS_ALTAS, "40003", "GECELCA")
+    ambas = _snap(
+        c="40003", cl="Generadora Cliente S.A.S", f="2025-09-01 00:00",
+        tg="GD menor igual 0.1MVA", pac=1000.0, al=True, ak=6200.0,
+    )
+    filas, informe = _fusionar([_actual()], [_snap(), ambas])
+
+    nueva = next(f for f in filas if f["c"] == "40003")
+    assert nueva["e"] == "GECELCA"
+    assert informe["altas"] == ["40003"]
+    assert informe["altas_minigranja"] == []
+
+
+def test_minigranja_de_cliente_unergy_antes_de_2026_se_incorpora_como_unergy():
+    # Cliente Unergy con fecha 2025: no cumple es_alta_unergy (ancla 2026),
+    # pero si es_minigranja_gd. Debe incorporarse por identidad de cliente
+    # (e="UNERGY", un=True), no con el nombre literal como empresa.
+    minigranja_unergy = _snap(
+        c="40004", cl="Unergy Energía Digital S.A.S", f="2025-07-01 00:00",
+        tg="GD menor igual 0.1MVA", pac=990.0,
+    )
+    assert es_alta_unergy(minigranja_unergy) is False
+
+    filas, informe = _fusionar([_actual()], [_snap(), minigranja_unergy])
+    nueva = next(f for f in filas if f["c"] == "40004")
+    assert nueva["e"] == "UNERGY"
+    assert nueva["un"] is True
+    assert informe["altas_unergy"] == ["40004"]
+    assert informe["altas_minigranja"] == []
 
 
 def test_falla_si_un_alta_no_tiene_empresa_asignada():
@@ -525,6 +636,7 @@ def test_render_reporte_declara_los_bloques():
     assert "# Reporte de cambios" in texto
     assert "Cliente Nuevo" in texto
     assert "Deriva de estados" in texto
+    assert "Altas por minigranjas GD" in texto
 
 
 def test_render_reporte_con_datos_reales_en_todas_las_secciones():
