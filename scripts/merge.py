@@ -10,8 +10,11 @@ import re
 from collections import Counter
 from datetime import date
 
-# Campos que air-e manda y sobrescriben lo que hay.
-CAMPOS_DE_AIRE = ("f", "es", "cl", "ci", "co", "ve", "t", "tg", "la", "lo")
+# Campos que air-e manda y sobrescriben lo que hay. `pac` (potencia AC en kW)
+# se agrego para que el filtro de potencia en la UI pueda mostrar el numero
+# real: antes se usaba solo de paso dentro de este modulo (es_minigranja_gd,
+# candidatos_excluidos) y se descartaba al armar la fila final.
+CAMPOS_DE_AIRE = ("f", "es", "cl", "ci", "co", "ve", "t", "tg", "la", "lo", "pac")
 # Campos que solo existen en la BD y nunca se recalculan.
 CAMPOS_PROPIOS = ("e", "se", "p", "un", "b")
 
@@ -322,6 +325,7 @@ def fusionar(
             # con None/0.0 borraria en silencio un almacenamiento real.
             fila_huerfana.setdefault("al", None)
             fila_huerfana.setdefault("ak", 0.0)
+            fila_huerfana.setdefault("pac", 0.0)
             salida.append(fila_huerfana)
             continue
 
@@ -527,11 +531,14 @@ def render_reporte(informe: dict) -> str:
     lineas += ["## Campos que cambiaron", ""]
     if informe["cambios"]:
         lineas += ["| Código | Campo | Antes | Después |", "|---|---|---|---|"]
-        for cambio in informe["cambios"]:
+        for cambio in informe["cambios"][:40]:
             lineas.append(
                 f"| `{cambio['c']}` | `{cambio['campo']}` | "
                 f"{cambio['antes']!r} | {cambio['despues']!r} |"
             )
+        if len(informe["cambios"]) > 40:
+            lineas.append("")
+            lineas.append(f"Y {len(informe['cambios']) - 40} mas.")
     else:
         lineas.append("Ninguno. La BD ya coincide con air-e.")
     lineas.append("")

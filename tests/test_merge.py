@@ -21,6 +21,10 @@ def _actual(**extra):
         "f": "2024-01-01 10:00", "es": "Estudio solicitud",
         "t": "Solar FV", "tg": "GD menor igual 0.1MVA",
         "la": 10.5, "lo": -74.5, "se": "ECS en proceso", "un": False, "b": "sept1",
+        # Mismo default que _snap(): sin esto, cada test de fusion existente
+        # vería un cambio fantasma de pac (None -> 100.0) que no tiene nada
+        # que ver con lo que ese test esta verificando.
+        "pac": 100.0,
     }
     base.update(extra)
     return base
@@ -110,6 +114,27 @@ def test_al_y_ak_frescos_reemplazan_los_de_una_corrida_anterior():
     )
     assert filas[0]["al"] is True
     assert filas[0]["ak"] == 250.0
+
+
+def test_agrega_pac_desde_air_e():
+    # `pac` (potencia AC) se agrego a CAMPOS_DE_AIRE para que el filtro de
+    # potencia en la UI tenga un numero real que mostrar, no solo el `tg` de
+    # air-e (que resulto no ser confiable como indicador de tamano).
+    filas, informe = _fusionar([_actual(pac=100.0)], [_snap(pac=960.0)])
+    assert filas[0]["pac"] == 960.0
+    assert {"pac"} <= {c["campo"] for c in informe["cambios"]}
+
+
+def test_huerfano_conserva_su_pac_si_ya_lo_tenia():
+    # Mismo patron que al/ak: un huerfano sin contraparte en el snapshot no
+    # debe perder un pac que ya tenia de una fusion anterior.
+    actuales = [_actual(c=str(i), pac=100.0) for i in range(100)]
+    actuales[99]["pac"] = 6200.0
+    snapshot = [_snap(c=str(i)) for i in range(99)]  # falta "99"
+    filas, informe = _fusionar(actuales, snapshot, total_minimo=1)
+    assert informe["sin_contraparte"] == ["99"]
+    huerfano = next(f for f in filas if f["c"] == "99")
+    assert huerfano["pac"] == 6200.0
 
 
 def test_huerfano_conserva_su_al_y_ak_si_ya_los_tenia():
@@ -684,3 +709,24 @@ def test_render_reporte_con_datos_reales_en_todas_las_secciones():
     assert "AGPE menor igual 0.1MVA" in texto and "8500" in texto
     assert "Estudio solicitud" in texto and "6000" in texto
     assert "2026-09" in texto and "12" in texto
+
+
+def test_render_reporte_limita_los_cambios_mostrados():
+    # El backfill de `pac` (agregarlo a CAMPOS_DE_AIRE) hace que una sola
+    # corrida pueda reportar miles de cambios (None -> valor real, uno por
+    # cada registro existente). Sin un tope, el reporte queda inmanejable.
+    informe = {
+        "fecha": "2026-09-17", "cambios": [
+            {"c": str(i), "campo": "pac", "antes": None, "despues": 100.0}
+            for i in range(50)
+        ],
+        "altas": [], "altas_unergy": [], "altas_minigranja": [],
+        "sin_contraparte": [], "deriva_estados": 0.0,
+        "candidatos_excluidos": [], "almacenamiento_incoherente": [],
+        "total": 50, "universo_aire": 50, "con_almacenamiento_aire": 0,
+        "no_incorporado_total": 0, "no_incorporado_por_tg": {},
+        "no_incorporado_por_es": {}, "no_incorporado_por_mes": {},
+    }
+    texto = render_reporte(informe)
+    assert texto.count("| `pac` |") == 40
+    assert "Y 10 mas." in texto
