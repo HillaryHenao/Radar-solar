@@ -92,7 +92,7 @@ def test_la_tabla_de_analisis_tiene_las_nueve_columnas(html):
     inicio = html.index("almacenamiento-section")
     cuerpo = html[inicio : inicio + 1800]
     for columna in ("Código", "Empresa", "Cliente", "Municipio",
-                    "Tipo de generación", "Estado air-e", "Estado Sheet",
+                    "Potencia AC (kW)", "Estado air-e", "Estado Sheet",
                     "Fecha solicitud", "Capacidad"):
         assert columna in cuerpo, columna
 

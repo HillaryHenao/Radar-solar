@@ -767,7 +767,7 @@ function buildAnalysisSkeleton(){
         '<table class="changes-table alm-table">'+
           '<thead><tr>'+
             '<th>Código</th><th>Empresa</th><th>Cliente</th><th>Municipio</th>'+
-            '<th>Tipo de generación</th><th>Estado air-e</th><th>Estado Sheet</th>'+
+            '<th>Potencia AC (kW)</th><th>Estado air-e</th><th>Estado Sheet</th>'+
             '<th>Fecha solicitud</th><th class="kwh">Capacidad (kWh)</th><th class="map-col">Mapa</th>'+
           '</tr></thead>'+
           '<tbody id="almbody"></tbody>'+
@@ -887,7 +887,7 @@ function renderAlmacenamiento(){
       '<td title="'+escAttr(d.e||'')+'">'+(d.e||'—')+'</td>'+
       '<td title="'+escAttr(d.cl||'')+'">'+(d.cl||'—')+'</td>'+
       '<td>'+(d.ci||'—')+'</td>'+
-      '<td>'+(d.tg||'—')+'</td>'+
+      '<td class="mono">'+(d.pac ? Number(d.pac).toLocaleString('es-CO') : '—')+'</td>'+
       '<td>'+(d.es||'—')+'</td>'+
       '<td>'+(d.se || '—')+'</td>'+
       '<td class="mono">'+(d.f||'—')+'</td>'+
