@@ -1090,7 +1090,9 @@ git commit -m "feat: esqueleto de la seccion Analisis XM en index.html"
 
 **Interfaces:**
 - Consumes: `XM_DATA` (Task 7), `escAttr` (existing helper, defined near `function escAttr(s){`).
-- Produces: `categoriaXm(p)`, `renderXmBarList(elId, entries)`, `mwPorMesXm(rows)`, `formatMesXm(mesIso)`, `renderAnalysisXmStats()`, `renderAnalysisXm()` (top-level orchestrator — later tasks extend it).
+- Produces: `categoriaXm(p)`, `renderXmBarList(elId, entries)` (generic, reused by Task 9's zona/promotor rankings), `mwPorMesXm(rows)`, `formatMesXm(mesIso)`, `esProximoXm(mesIso)`, `renderXmTimeline(elId, entradas)`, `renderAnalysisXmStats()`, `renderAnalysisXm()` (top-level orchestrator — later tasks extend it).
+
+**Design note:** `Fecha de Puesta en Operación Oficial` is XM's confirmed date; `FPO` (the free-text fallback used when Oficial is blank — see Task 2) is only the promoter's own estimate and isn't reliable. The timeline must show this distinction per-month, not just per-row in the table (Task 9 already tags individual rows " (estimada)"; this task makes the *aggregate* visible) — each month's bar is split into a confirmed segment and an estimated segment, with a two-line legend explaining the colors. The next 12 months (from today) are also visually bolded, since that's the near-term window someone reading this cares about most.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1108,9 +1110,32 @@ def test_existe_render_xm_bar_list(html):
 
 def test_mw_por_mes_xm_ordena_cronologicamente_no_por_magnitud(html):
     inicio = html.index("function mwPorMesXm(")
-    cuerpo = html[inicio : inicio + 500]
+    cuerpo = html[inicio : inicio + 700]
     # Debe ordenar por la clave (mes), no por el valor (MW) como rankBy.
     assert "localeCompare" in cuerpo
+
+
+def test_mw_por_mes_xm_separa_confirmada_de_estimada(html):
+    inicio = html.index("function mwPorMesXm(")
+    cuerpo = html[inicio : inicio + 700]
+    assert "p.fpoc" in cuerpo
+    assert "confirmada" in cuerpo
+    assert "estimada" in cuerpo
+
+
+def test_existe_es_proximo_xm(html):
+    inicio = html.index("function esProximoXm(")
+    cuerpo = html[inicio : inicio + 400]
+    assert "getFullYear" in cuerpo
+    assert "getMonth" in cuerpo
+
+
+def test_render_xm_timeline_dibuja_dos_segmentos(html):
+    inicio = html.index("function renderXmTimeline(")
+    cuerpo = html[inicio : html.index("function renderAnalysisXmStats(")]
+    assert "insight-bar confirmada" in cuerpo or "insight-bar confirmada".replace(" ","") in cuerpo.replace(" ","")
+    assert "insight-bar estimada" in cuerpo or "insight-bar estimada".replace(" ","") in cuerpo.replace(" ","")
+    assert "proximo" in cuerpo
 
 
 def test_render_analysis_xm_stats_usa_xm_data(html):
@@ -1124,15 +1149,32 @@ def test_render_analysis_xm_llama_a_las_piezas(html):
     inicio = html.index("function renderAnalysisXm(){")
     cuerpo = html[inicio : inicio + 500]
     assert "renderAnalysisXmStats()" in cuerpo
-    assert "renderXmBarList('xmTimeline'" in cuerpo.replace(" ", "")
+    assert "renderXmTimeline(" in cuerpo
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `python -m pytest tests/test_ui_contract.py -v -k "categoria_xm or render_xm_bar_list or mw_por_mes or render_analysis_xm"`
+Run: `python -m pytest tests/test_ui_contract.py -v -k "categoria_xm or render_xm_bar_list or mw_por_mes or render_xm_timeline or es_proximo_xm or render_analysis_xm"`
 Expected: FAIL — ninguna de estas funciones existe todavia.
 
-- [ ] **Step 3: Write the implementation**
+- [ ] **Step 3: Add CSS for the segmented timeline bar**
+
+In the `<style>` block, right after the `.insight-empty{...}` rule (around line 182 — the same neighborhood Task 7 already touched for the badge/toolbar CSS), add:
+
+```css
+.insight-bar-wrap{ position:relative; }
+.insight-bar.confirmada{ position:absolute; top:0; left:0; background:var(--accent); }
+.insight-bar.estimada{ position:absolute; top:0; background:var(--st-wait); opacity:.8; }
+.insight-row.proximo .insight-name{ font-weight:700; color:var(--text); }
+.xm-timeline-legend{ display:flex; gap:14px; font-size:.68rem; color:var(--text-muted); margin:0 0 8px; }
+.xm-timeline-legend span{ display:inline-flex; align-items:center; gap:5px; }
+.xm-timeline-legend .dot{ width:8px; height:8px; border-radius:50%; display:inline-block; background:var(--accent); }
+.xm-timeline-legend .dot.estimada{ background:var(--st-wait); }
+```
+
+`.insight-bar-wrap{ position:relative; }` is safe for every existing (non-timeline) use of `.insight-bar`: those bars keep using normal `width:%` in flow, unaffected by the wrapper gaining `position:relative`.
+
+- [ ] **Step 4: Write the JS implementation**
 
 Add these functions right after `buildAnalysisXmSkeleton()` (Task 7):
 
@@ -1145,21 +1187,43 @@ function formatMesXm(mesIso){
   return nombres[parseInt(mes,10)-1]+' '+anio;
 }
 
+// "Proximos 12 meses" = desde el mes actual (inclusive) hasta 11 meses despues.
+function esProximoXm(mesIso){
+  const ahora = new Date();
+  const inicio = ahora.getFullYear()*12 + ahora.getMonth();
+  const [anio, mes] = mesIso.split('-').map(Number);
+  const idx = anio*12 + (mes-1);
+  return idx >= inicio && idx < inicio + 12;
+}
+
+// Separa MW confirmada (fpoc=true, de Fecha Oficial) de estimada (fpoc=false,
+// de FPO texto libre): la Oficial es la que XM confirma, FPO es solo la
+// expectativa del promotor y no es fiable por si sola.
 function mwPorMesXm(rows){
-  const totales = new Map();
+  const totales = new Map(); // 'YYYY-MM' -> {confirmada, estimada}
   rows.forEach(p=>{
     const mes = p.fpo.slice(0,7);
-    totales.set(mes, (totales.get(mes)||0) + p.mw);
+    const actual = totales.get(mes) || {confirmada:0, estimada:0};
+    if(p.fpoc) actual.confirmada += p.mw; else actual.estimada += p.mw;
+    totales.set(mes, actual);
   });
   return Array.from(totales.entries())
     .sort((a,b)=>a[0].localeCompare(b[0]))
-    .map(([mes,mw])=>[formatMesXm(mes), Math.round(mw*10)/10]);
+    .map(([mesIso,v])=>({
+      mesIso,
+      mesLabel: formatMesXm(mesIso),
+      confirmada: Math.round(v.confirmada*10)/10,
+      estimada: Math.round(v.estimada*10)/10,
+      total: Math.round((v.confirmada+v.estimada)*10)/10,
+    }));
 }
 
 // Barra rankeada generica, mismo look que .insight-row/.insight-bar, pero sin
 // el conteo automatico en el titulo ni el clic-a-modal de renderInsightList:
 // las filas de XM no tienen la forma que openRankDetail espera (Codigo,
 // Municipio, Departamento, Estado air-e, Fecha solicitud, Potencia AC, Mapa).
+// Usada por Task 9 para las listas de zona y promotor (conteo simple, sin
+// distincion confirmada/estimada).
 function renderXmBarList(elId, entries){
   const el = document.getElementById(elId);
   if(!entries.length){ el.innerHTML = '<p class="insight-empty">Sin datos.</p>'; return; }
@@ -1171,6 +1235,36 @@ function renderXmBarList(elId, entries){
       '<span class="insight-count">'+val.toLocaleString('es-CO')+'</span>'+
     '</div>'
   ).join('');
+}
+
+// Dedicada a la linea de tiempo: cada fila es dos segmentos superpuestos
+// (confirmada + estimada) en vez de una sola barra, y resalta los proximos
+// 12 meses. No reutiliza renderXmBarList porque esa funcion asume un solo
+// valor por fila.
+function renderXmTimeline(elId, entradas){
+  const el = document.getElementById(elId);
+  if(!entradas.length){ el.innerHTML = '<p class="insight-empty">Sin datos.</p>'; return; }
+  const max = Math.max(...entradas.map(e=>e.total));
+  const leyenda =
+    '<div class="xm-timeline-legend">'+
+      '<span><i class="dot"></i> Confirmada (Fecha Oficial de XM)</span>'+
+      '<span><i class="dot estimada"></i> Estimada (FPO del promotor)</span>'+
+    '</div>';
+  const filas = entradas.map(e=>{
+    const pctConfirmada = max ? e.confirmada/max*100 : 0;
+    const pctEstimada = max ? e.estimada/max*100 : 0;
+    return '<div class="insight-row'+(esProximoXm(e.mesIso)?' proximo':'')+'" '+
+        'title="'+e.confirmada.toLocaleString('es-CO')+' MW confirmada + '+
+        e.estimada.toLocaleString('es-CO')+' MW estimada">'+
+      '<span class="insight-name">'+e.mesLabel+'</span>'+
+      '<span class="insight-bar-wrap">'+
+        '<span class="insight-bar confirmada" style="width:'+pctConfirmada+'%"></span>'+
+        '<span class="insight-bar estimada" style="width:'+pctEstimada+'%;left:'+pctConfirmada+'%"></span>'+
+      '</span>'+
+      '<span class="insight-count">'+e.total.toLocaleString('es-CO')+'</span>'+
+    '</div>';
+  }).join('');
+  el.innerHTML = leyenda + filas;
 }
 
 function renderAnalysisXmStats(){
@@ -1196,7 +1290,7 @@ function renderAnalysisXmStats(){
 
 function renderAnalysisXm(){
   renderAnalysisXmStats();
-  renderXmBarList('xmTimeline', mwPorMesXm(XM_DATA));
+  renderXmTimeline('xmTimeline', mwPorMesXm(XM_DATA));
   renderXmBarList('xmZonas', rankBy(XM_DATA, p=>p.ar));
   renderXmBarList('xmPromotores', rankBy(XM_DATA, p=>p.pm));
 }
@@ -1214,20 +1308,20 @@ Then call it once from `buildAnalysisXmSkeleton()`, at the end (after the filter
 
 (`renderAnalysisXmTable` is added in Task 9; calling it from a listener before it exists is fine — the listener body is not evaluated until the user changes a filter, which only happens after Task 9 ships.)
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [ ] **Step 5: Run tests to verify they pass**
 
 Run: `python -m pytest tests/test_ui_contract.py -v`
 Expected: PASS, all tests.
 
-- [ ] **Step 5: Manual smoke check**
+- [ ] **Step 6: Manual smoke check**
 
-Reload `http://localhost:8765/index.html` (still with `XM_DATA = []`), open the Análisis tab. Confirm the stat tiles show `0` / `0 proyectos` and the two `insight-list`s show "Sin datos." with no console errors.
+Reload `http://localhost:8765/index.html` (still with `XM_DATA = []`), open the Análisis tab. Confirm the stat tiles show `0` / `0 proyectos` and the timeline/zona/promotor lists show "Sin datos." with no console errors.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add index.html tests/test_ui_contract.py
-git commit -m "feat: tarjetas resumen y linea de tiempo de Analisis XM"
+git commit -m "feat: tarjetas resumen y linea de tiempo confirmada/estimada de Analisis XM"
 ```
 
 ---
@@ -1556,7 +1650,7 @@ python -m http.server 8765
 
 Visit `http://localhost:8765/index.html`, click "Análisis", and confirm:
 - The "Análisis XM" block shows the stat tiles with real numbers (≈10.027 MW, 386 proyectos, the minigranja/mayor split).
-- The timeline shows bars from 2022 through 2029 with 2027 as the tallest (per the spec's profiling, ≈4.312 MW that year).
+- The timeline shows bars from 2022 through 2029 with 2027 as the tallest (per the spec's profiling, ≈4.312 MW that year), each month bar visibly split into a confirmed segment and a lighter estimated segment, with the two-line legend above it, and Oct 2026–Sep 2027 bolded as the "próximos 12 meses" window.
 - Zona and promotor rankings are populated and scrollable.
 - The table shows 386 rows; changing the "Zona" filter to "Caribe" narrows it to 207; changing "Categoría" to "Minigranja/GD" narrows it further.
 - At least one row in a Caribe/Atlantico or Caribe/GCM zone shows a non-"Sin match" badge (spot-check a promotor name that also appears as an air-e `cl`, e.g. a Unergy-related XM row against `DATA`).
